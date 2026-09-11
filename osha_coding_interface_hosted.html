@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSHA Heat Rule — Segment Coding</title>
+<style>
+  :root{
+    --paper:#F3F1EA;
+    --paper-raised:#FBFAF6;
+    --ink:#1E2A22;
+    --ink-soft:#4A564C;
+    --rule:#C9C3B4;
+    --accent:#2F4D63;
+    --accent-soft:#DCE6EA;
+    --flag:#9A5B2E;
+    --flag-soft:#F3E3D3;
+    --good:#3C6E4E;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:Georgia,'Iowan Old Style','Palatino Linotype','Book Antiqua',serif;
+    line-height:1.5;
+  }
+  .chrome{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  #app{
+    max-width:680px;
+    margin:0 auto;
+    padding:28px 20px 80px;
+  }
+  header.topbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    border-bottom:1px solid var(--rule);
+    padding-bottom:14px;
+    margin-bottom:24px;
+  }
+  header.topbar h1{
+    font-size:1.15rem;
+    margin:0;
+    font-weight:normal;
+    letter-spacing:0.2px;
+  }
+  header.topbar .meta{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.78rem;
+    color:var(--ink-soft);
+  }
+  .card{
+    background:var(--paper-raised);
+    border:1px solid var(--rule);
+    border-radius:3px;
+    padding:20px 22px;
+    margin-bottom:18px;
+  }
+  .segment-text{
+    font-size:1.18rem;
+    line-height:1.6;
+    padding:4px 2px;
+  }
+  .segment-label{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.72rem;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+  }
+  .section-tag{
+    display:inline-block;
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.74rem;
+    color:var(--accent);
+    border:1px solid var(--accent);
+    border-radius:2px;
+    padding:1px 7px;
+    margin-bottom:10px;
+  }
+  .gate-question, .item-q{
+    font-size:1.02rem;
+  }
+  .btnrow{
+    display:flex;
+    gap:10px;
+    margin-top:16px;
+  }
+  button{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.92rem;
+    border-radius:3px;
+    border:1px solid var(--accent);
+    background:var(--paper-raised);
+    color:var(--accent);
+    padding:9px 18px;
+    cursor:pointer;
+  }
+  button.primary{
+    background:var(--accent);
+    color:#fff;
+  }
+  button.ghost{
+    border-color:var(--rule);
+    color:var(--ink-soft);
+  }
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  button:hover{filter:brightness(0.97);}
+  .items-list{
+    margin-top:14px;
+    display:flex;
+    flex-direction:column;
+    gap:11px;
+  }
+  .item-row{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.92rem;
+    padding-left:0;
+  }
+  .item-row.branch{
+    margin-left:26px;
+    color:var(--ink-soft);
+  }
+  .item-row input[type=checkbox], .item-row input[type=radio]{
+    margin-top:3px;
+  }
+  .item-row .label{font-weight:600;}
+  .item-row .q{color:var(--ink-soft); font-weight:normal;}
+  textarea, input[type=text], select{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.9rem;
+    width:100%;
+    border:1px solid var(--rule);
+    border-radius:3px;
+    padding:8px 10px;
+    background:#fff;
+    color:var(--ink);
+  }
+  textarea{min-height:60px; resize:vertical;}
+  .progress{
+    display:flex;
+    gap:4px;
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.68rem;
+    margin-bottom:18px;
+    flex-wrap:wrap;
+  }
+  .progress span{
+    border:1px solid var(--rule);
+    border-radius:2px;
+    padding:2px 6px;
+    color:var(--ink-soft);
+  }
+  .progress span.done{ background:var(--good); border-color:var(--good); color:#fff; }
+  .progress span.current{ border-color:var(--accent); color:var(--accent); font-weight:bold; }
+  .progress span.skipped{ color:#B8B2A2; text-decoration:line-through; }
+  .flagbar{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:0.85rem;
+    color:var(--flag);
+    background:var(--flag-soft);
+    border:1px solid var(--flag);
+    border-radius:3px;
+    padding:8px 12px;
+    margin-top:12px;
+  }
+  .warn{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.82rem;
+    color:var(--flag);
+    margin-top:8px;
+  }
+  .small{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.78rem;
+    color:var(--ink-soft);
+  }
+  footer.foot{
+    margin-top:36px;
+    text-align:center;
+  }
+  footer.foot a{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.76rem;
+    color:var(--ink-soft);
+    text-decoration:underline;
+    cursor:pointer;
+  }
+  .divider{border:none; border-top:1px solid var(--rule); margin:20px 0;}
+  table.admin-table{
+    width:100%;
+    border-collapse:collapse;
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.82rem;
+  }
+  table.admin-table td, table.admin-table th{
+    border-bottom:1px solid var(--rule);
+    padding:6px 4px;
+    text-align:left;
+  }
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:0.8rem;
+    color:var(--ink-soft);
+    margin-bottom:4px;
+  }
+</style>
+</head>
+<body>
+<div id="app"><p class="chrome">Loading…</p></div>
+
+<script>
+/* =========================================================
+   CODEBOOK v3.0 — segment-level question set
+   ========================================================= */
+const CODEBOOK = [
+  { id:'A', title:'Stance & recommendation signals',
+    gate:'Does this segment take any position on the rule (support, oppose, keep, change, or withdraw) or ask for any change to it?',
+    items:[
+      {code:'supports_rule', label:'Supports rule', q:'Does this segment explicitly voice support for the proposed rule (e.g. "please implement," "we support")?'},
+      {code:'opposes_rule', label:'Opposes rule', q:'Does this segment explicitly voice opposition to the proposed rule (e.g. "should be withdrawn," "we oppose")?'},
+      {code:'keep_as_proposed', label:'Keep as proposed', q:'Does this segment ask OSHA to keep/adopt the rule as proposed, with no specific change requested?'},
+      {code:'requests_change', label:'Requests change', q:'Does this segment ask for a specific change to the rule, short of full withdrawal?'},
+      {code:'stronger_change', label:'Stronger change', q:'Does the requested change add a requirement, lower a trigger threshold, make a provision mandatory, or broaden coverage?', branchFrom:'requests_change'},
+      {code:'weaker_change', label:'Weaker change', q:'Does the requested change raise a threshold, request an exemption, extend a timeline, or narrow coverage?', branchFrom:'requests_change'},
+      {code:'withdraw_rule', label:'Withdraw rule', q:'Does this segment ask OSHA to withdraw/scrap the rule entirely?'},
+    ]},
+  { id:'B', title:'Commenter identity signals',
+    gate:"Does this segment reveal anything about who's speaking (role, occupation, organization, or family/identity connection)?",
+    items:[
+      {code:'farmworker', label:'Farmworker', q:'Does this segment identify the commenter as a current/former farmworker?'},
+      {code:'farmworker_family', label:'Farmworker family', q:'…as a family member of a farmworker?'},
+      {code:'employer', label:'Employer', q:'…as a grower/employer speaking for themselves or their own farm?'},
+      {code:'trade_association', label:'Trade association', q:'…as a grower/industry trade association?'},
+      {code:'advocacy_org', label:'Advocacy org', q:'…as a farmworker advocacy organization?'},
+      {code:'union', label:'Union', q:'…as a labor union or union member?'},
+      {code:'legal_aid_org', label:'Legal aid org', q:"…as a legal aid/workers' rights organization?"},
+      {code:'research_institution', label:'Research institution', q:'…as a public health/research institution?'},
+      {code:'gov_official', label:'Gov official', q:'…as a government agency/official?'},
+      {code:'solidarity_worker', label:'Solidarity worker', q:'…as a non-agricultural worker citing their own occupation in solidarity?'},
+      {code:'general_public', label:'General public', q:'Does this segment read as an individual with no organization/occupation/family connection stated?'},
+      {code:'other_role', label:'Other role', q:"Does this segment identify the commenter's role/organization as something not covered above (e.g., staffing agency, vendor, consultant)?", hasText:true, textLabel:'Specify role'},
+    ]},
+  { id:'C', title:'Narrative roles — victim, protagonist, antagonist',
+    gate:'Does this segment cast any group as harmed, as a central actor, or as a source of threat/blame?',
+    items:[
+      {code:'farmworkers_harmed', label:'Farmworkers harmed', q:'Does this segment frame farmworkers as harmed, threatened, or burdened?'},
+      {code:'public_food_system', label:'Public/food system harmed', q:'Does this segment frame the general public/food system as harmed (closures, job losses, food prices)?'},
+      {code:'industry_harmed', label:'Industry harmed', q:'Does this segment frame industry/employers themselves as harmed (cost/compliance burden)?'},
+      {code:'workers_as_actor', label:'Workers as actor', q:'Does this segment center farmworkers/workers as the main actor or problem-solver?'},
+      {code:'employers_as_actor', label:'Employers as actor', q:'Does this segment center employers/growers as the main actor or problem-solver?'},
+      {code:'heat_climate', label:'Heat/climate as antagonist', q:'Does this segment frame heat/climate itself as the source of harm?'},
+      {code:'gov_overreach', label:'Gov overreach as antagonist', q:'Does this segment frame government regulation/overreach as the source of harm?'},
+      {code:'greed_profit', label:'Greed/profit as antagonist', q:'Does this segment frame corporate greed/profit motive as the source of harm?'},
+      {code:'power_abuse', label:'Power abuse as antagonist', q:"Does this segment frame an employer's or official's callous disregard/abuse of power (not profit-specific) as the source of harm?"},
+    ]},
+  { id:'D', title:'Accountability signals',
+    gate:'Does this segment assign responsibility for preventing/responding to heat illness to any actor?',
+    items:[
+      {code:'workers_individuals', label:'Workers/individuals', q:'Does this segment treat workers/individuals as responsible?'},
+      {code:'employers_growers', label:'Employers/growers', q:'Does this segment treat employers/growers as responsible?'},
+      {code:'labor_contractors', label:'Labor contractors', q:'Does this segment treat labor contractors/intermediaries as responsible?'},
+      {code:'local_community', label:'Local community', q:'Does this segment treat the local community as responsible?'},
+      {code:'state_gov', label:'State government', q:'Does this segment treat state government as responsible?'},
+      {code:'federal_gov', label:'Federal government', q:'Does this segment treat the federal government/OSHA as responsible?'},
+      {code:'public_society', label:'Public/society', q:'Does this segment treat the public/society broadly as responsible?'},
+    ]},
+  { id:'E', title:'Rhetorical framing',
+    gate:'Does this segment make a rhetorical framing argument (about burden, feasibility, morality, need, redundancy, or existing gaps) rather than simply stating a fact?',
+    items:[
+      {code:'climate_context', label:'Climate context', q:'Does this segment invoke climate change/rising or record heat as context?'},
+      {code:'physical_vulnerability', label:'Physical vulnerability', q:'Does this segment frame worker vulnerability at the level of the body/working conditions?'},
+      {code:'structural_vulnerability', label:'Structural vulnerability', q:'Does this segment tie vulnerability to systemic factors (immigration status, labor power, economic dependence)?'},
+      {code:'preventable', label:'Preventable', q:'Does this segment frame heat illness/death as preventable through named interventions?'},
+      {code:'justice_dignity', label:'Justice/dignity', q:'Does this segment invoke justice, rights, dignity, fairness, or moral responsibility?'},
+      {code:'essential_worker', label:'Essential worker', q:'Does this segment argue farmworkers provide an essential/irreplaceable service society depends on?'},
+      {code:'industry_importance', label:'Industry importance', q:'Does this segment argue the industry/sector itself is important, irreplaceable, or foundational?'},
+      {code:'regulatory_gap', label:'Regulatory gap', q:'Does this segment name an absence, failure, or preemption of existing protections?'},
+      {code:'commonsense', label:'Commonsense', q:"Does this segment argue the rule's protections are basic, simple, or low-burden?"},
+      {code:'cost_burden', label:'Cost burden', q:'Does this segment argue the rule imposes economic cost burden?'},
+      {code:'cost_savings', label:'Cost savings', q:"Does this segment argue the rule's protections would save employers money rather than cost them?"},
+      {code:'unworkable', label:'Unworkable', q:'Does this segment argue the rule is infeasible to implement, separate from cost?'},
+      {code:'needs_flexibility', label:'Needs flexibility', q:'Does this segment argue employers/regions need flexibility rather than a uniform standard?'},
+      {code:'backfires_on_workers', label:'Backfires on workers', q:'Does this segment argue the rule would harm the very workers it is meant to protect?'},
+      {code:'redundant_already_done', label:'Redundant/already done', q:'Does this segment argue the rule is unnecessary because employers already voluntarily provide heat protections?'},
+    ]},
+  { id:'F', title:'Evidence & legitimacy signals',
+    gate:"Does this segment support a claim with evidence, or ground the commenter's own authority/credibility in some basis?",
+    items:[
+      {code:'own_experience', label:'Own experience (evidence)', q:"Does this segment support its claim with the commenter's own firsthand experience?"},
+      {code:'stats_studies', label:'Stats/studies', q:'Does this segment support its claim with data, statistics, or research findings?'},
+      {code:'laws_regs_cited', label:'Laws/regs cited', q:'Does this segment support its claim by citing a specific law/regulation (incl. a state ban/preemption)?'},
+      {code:'others_stories', label:"Others' stories", q:"Does this segment support its claim with someone else's story or case?"},
+      {code:'institutional_knowledge', label:'Institutional knowledge', q:'Does this segment support its claim with general industry/operational knowledge (no formal citation)?'},
+      {code:'no_evidence', label:'No evidence', q:'Does this segment make a claim with no evidence/citation/warrant at all?'},
+      {code:'lived_experience', label:'Lived experience (authority)', q:"Does this segment ground the commenter's authority in their own firsthand experience?"},
+      {code:'expertise', label:'Expertise', q:"Does this segment ground authority in the commenter's professional role/training/specialized knowledge?"},
+      {code:'org_authority', label:'Org authority', q:'Does this segment ground authority in representing an organization/membership/official capacity?'},
+      {code:'scientific_credibility', label:'Scientific credibility', q:"Does this segment ground authority in research/data as the basis for the commenter's own credibility?"},
+      {code:'legal_authority', label:'Legal authority', q:'Does this segment ground authority in law/regulation/legal expertise?'},
+      {code:'moral_authority', label:'Moral authority', q:'Does this segment ground authority in ethical/moral standing rather than experience or role?'},
+      {code:'solidarity_f', label:'Solidarity', q:'Does this segment ground authority in group membership/shared identity with those affected?'},
+      {code:'heritage_tradition', label:'Heritage/tradition', q:'Does this segment ground authority/credibility in tradition, heritage, or a revered historical figure/quotation?'},
+    ]},
+  { id:'G', title:'Death imagery, named individuation',
+    gate:'Does this segment mention death/fatality, or name a specific real person/incident for rhetorical effect?',
+    items:[
+      {code:'death_imagery', label:'Death imagery', q:'Does this segment mention death, mortality, fatality, or fatal heat illness?'},
+      {code:'names_person_incident', label:'Names person/incident', q:'Does this segment name a specific real person, incident, or entity — as victim or wrongdoer — to make the argument feel more concrete, vivid, or urgent?', hasText:true, textLabel:'Who/what is named'},
+    ]},
+  { id:'H', title:'Delegitimizing opponents',
+    gate:'Does this segment attempt to delegitimize an opposing stakeholder or the agency itself?',
+    items:[
+      {code:'emotional_anecdotal', label:'Emotional/anecdotal', q:'Does this segment dismiss an opposing view as merely emotional/anecdotal/unscientific?'},
+      {code:'biased_self_interested', label:'Biased/self-interested', q:'Does this segment frame opposing stakeholders as biased/self-interested?'},
+      {code:'unqualified', label:'Unqualified', q:"Does this segment question an opposing stakeholder's (not the agency's) qualifications/competence?"},
+      {code:'agency_process', label:'Agency process', q:"Does this segment challenge OSHA/the agency's own rulemaking process, analysis, or competence?", hasText:true, textLabel:'Delegitimation target'},
+    ]},
+  { id:'I', title:'Temporal frame', single:true,
+    gate:'Does this segment describe a state of affairs, invoke precedent, or project forward to risk/recommendation?',
+    items:[
+      {code:'standing_condition', label:'Standing condition', q:'Does this segment describe an ongoing state of affairs, presented as a baseline fact?'},
+      {code:'precedent_appeal', label:'Precedent appeal', q:'Does this segment invoke history, tradition, or continuity to lend weight to the claim?'},
+      {code:'forward_projection', label:'Forward projection', q:'Does this segment project forward to a risk, consequence, or recommendation contingent on future action/inaction?'},
+    ]},
+  { id:'J', title:'Emotional register',
+    gate:'Does this segment have a distinguishable emotional tone (urgent, measured/technical, angry, or compassionate) beyond neutral reporting?',
+    items:[
+      {code:'urgent_alarmed', label:'Urgent/alarmed', q:"Does this segment's tone read as urgent or alarmed?"},
+      {code:'measured_technical', label:'Measured/technical', q:"Does this segment's tone read as measured, technical, or matter-of-fact?"},
+      {code:'angry_oppositional', label:'Angry/oppositional', q:"Does this segment's tone read as angry or oppositional?"},
+      {code:'compassionate', label:'Compassionate', q:"Does this segment's tone read as compassionate/empathetic?"},
+    ]},
+  { id:'K', title:'Addressed audience',
+    gate:'Is this segment clearly directed at a specific audience (OSHA, the public, fellow stakeholders, or opponents)?',
+    items:[
+      {code:'addresses_osha', label:'Addresses OSHA', q:'Does this segment directly address OSHA/the agency?'},
+      {code:'addresses_public', label:'Addresses public', q:'Does this segment orient toward the general public/reader rather than OSHA?'},
+      {code:'addresses_fellow_stakeholders', label:'Addresses fellow stakeholders', q:'Does this segment address people in a similar position to the commenter?'},
+      {code:'addresses_opponents', label:'Addresses opponents', q:'Does this segment directly address/rebut people holding the opposing position?'},
+    ]},
+];
+
+const CODERS = ['Caitlin','Michaela','Joe','Fiona Bradbury','Andrea Juarbe'];
+const MIN_CODERS_PER_SEGMENT = 3;
+
+const SAMPLE_SEGMENTS = [
+  {commentId:'OSHA-2021-0009-5281', segmentId:'seg_5281_1', text:'In recent years, record-high temperatures have been seen across the country. These extreme temperatures injure and kill workers each year.'},
+  {commentId:'OSHA-2021-0009-5281', segmentId:'seg_5281_2', text:'Farm workers are as much as 35 times more likely to be killed by heat than any other civilian occupation.'},
+  {commentId:'OSHA-2021-0009-5281', segmentId:'seg_5281_3', text:"Heat deaths are preventable tragedies. The solution isn't complicated: training, shade, cool water and paid rest breaks."},
+  {commentId:'OSHA-2021-0009-22533', segmentId:'seg_22533_1', text:"We strongly oppose the Department of Labor's proposed Heat Injury and Illness rule."},
+  {commentId:'OSHA-2021-0009-22532', segmentId:'seg_22532_1', text:'With tight margins and rising compliance costs across this complicated regulatory scheme, small and medium-sized farms may struggle to afford these mandates.'},
+  {commentId:'OSHA-2021-0009-22532', segmentId:'seg_22532_2', text:'I urge OSHA to consider these challenges and to collaborate with the agriculture industry to develop practical, cost-effective, and flexible solutions that balance worker safety with the realities of agricultural work.'},
+];
+
+/* =========================================================
+   STATE
+   ========================================================= */
+let STATE = {
+  segments: [],          // [{commentId, segmentId, text}]
+  assignment: {},        // { coderName: { order: [segmentId,...] } }
+  coder: null,
+  responses: {},         // { segmentId: {...record} } for current coder
+  currentSegmentId: null,
+  sectionIndex: 0,
+  sectionState: {},       // working answers for the segment currently being coded
+  view: 'loading'
+};
+
+const app = document.getElementById('app');
+
+/* =========================================================
+   BACKEND — Google Sheets via Apps Script Web App
+   Paste your deployed web app URL (ends in /exec) below.
+   See the setup instructions that came with this file.
+   ========================================================= */
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw3kTDVgVT4vdffJFdd-iC41cMZDCp-br_E53NzF4TOgiLSvsry4pD2fBsSW68xzUja/exec';
+
+function backendConfigured(){
+  return APPS_SCRIPT_URL && APPS_SCRIPT_URL.indexOf('PASTE_YOUR') === -1;
+}
+
+async function safeGet(key){
+  if(!backendConfigured()) return null;
+  try{
+    const res = await fetch(APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key));
+    const data = await res.json();
+    return (data && data.value != null) ? data.value : null;
+  }catch(e){ console.error('safeGet failed', e); return null; }
+}
+async function safeSet(key, value){
+  if(!backendConfigured()) return false;
+  try{
+    // NOTE: body is sent as a plain string (no custom headers) on purpose —
+    // this keeps it a CORS "simple request" so the browser doesn't send a
+    // preflight OPTIONS call, which Apps Script web apps don't handle.
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action:'set', key, value })
+    });
+    const data = await res.json();
+    return !!(data && data.ok);
+  }catch(e){ console.error('safeSet failed', e); return false; }
+}
+async function safeList(prefix){
+  if(!backendConfigured()) return [];
+  try{
+    const res = await fetch(APPS_SCRIPT_URL + '?action=list&prefix=' + encodeURIComponent(prefix||''));
+    const data = await res.json();
+    return (data && data.keys) ? data.keys : [];
+  }catch(e){ console.error('safeList failed', e); return []; }
+}
+async function testBackend(){
+  if(!backendConfigured()) return {ok:false, msg:'Apps Script URL not set yet — edit APPS_SCRIPT_URL near the top of the <script> block.'};
+  const testKey = 'osha:_connection_test';
+  const testVal = 'ping-'+Date.now();
+  const setOk = await safeSet(testKey, testVal);
+  if(!setOk) return {ok:false, msg:'Could not write to the sheet. Check the deployment is "Anyone" access and the URL ends in /exec.'};
+  const got = await safeGet(testKey);
+  if(got !== testVal) return {ok:false, msg:'Wrote OK but read back a mismatch — check the Apps Script code matches the provided version.'};
+  return {ok:true, msg:'Connected. Read/write to the sheet is working.'};
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+async function init(){
+  const segRaw = await safeGet('osha:segments');
+  STATE.segments = segRaw ? JSON.parse(segRaw) : [];
+  const asgRaw = await safeGet('osha:assignment');
+  STATE.assignment = asgRaw ? JSON.parse(asgRaw) : {};
+  STATE.view = 'select';
+  render();
+}
+
+/* =========================================================
+   ASSIGNMENT GENERATION — balanced random, min 3 of 5 coders per segment
+   ========================================================= */
+function generateAssignment(){
+  const counts = {}; CODERS.forEach(c => counts[c] = 0);
+  const perSegment = {}; // segmentId -> [coders]
+  STATE.segments.forEach(seg => {
+    const ranked = CODERS.slice().sort((a,b)=>{
+      const d = counts[a]-counts[b];
+      return d !== 0 ? d : (Math.random()-0.5);
+    });
+    const chosen = ranked.slice(0, MIN_CODERS_PER_SEGMENT);
+    chosen.forEach(c => counts[c]++);
+    perSegment[seg.segmentId] = chosen;
+  });
+  const assignment = {};
+  CODERS.forEach(c => {
+    const mySegs = STATE.segments.filter(s => perSegment[s.segmentId].includes(c)).map(s=>s.segmentId);
+    // shuffle order per coder
+    for(let i = mySegs.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [mySegs[i],mySegs[j]] = [mySegs[j],mySegs[i]];
+    }
+    assignment[c] = { order: mySegs };
+  });
+  return assignment;
+}
+
+/* =========================================================
+   RENDER: ROUTER
+   ========================================================= */
+function render(){
+  if(STATE.view === 'select') return renderSelect();
+  if(STATE.view === 'admin') return renderAdmin();
+  if(STATE.view === 'code') return renderCode();
+  if(STATE.view === 'done') return renderDone();
+  if(STATE.view === 'nosegs') return renderNoSegs();
+}
+
+function topbar(subtitle){
+  return `<header class="topbar chrome">
+    <h1>OSHA Heat Rule — Segment Coding</h1>
+    <span class="meta">${subtitle||''}</span>
+  </header>`;
+}
+
+/* ---------- Coder select screen ---------- */
+function renderSelect(){
+  const options = CODERS.map(c=>`<option value="${c}">${c}</option>`).join('');
+  const warnBanner = !backendConfigured() ? `<div class="warn chrome" style="margin-bottom:14px;">Backend not configured yet — go to Admin / setup and paste in the Apps Script URL before anyone starts coding.</div>` : '';
+  app.innerHTML = `
+    ${topbar('Codebook v3.0 — pilot')}
+    ${warnBanner}
+    <div class="card chrome">
+      <div class="field">
+        <label>Who is coding?</label>
+        <select id="coderSelect">
+          <option value="">Select your name…</option>
+          ${options}
+        </select>
+      </div>
+      <div class="btnrow">
+        <button class="primary" id="startBtn">Start coding</button>
+      </div>
+    </div>
+    <footer class="foot"><a id="adminLink">Admin / setup</a></footer>
+  `;
+  document.getElementById('startBtn').onclick = async ()=>{
+    const val = document.getElementById('coderSelect').value;
+    if(!val) return;
+    STATE.coder = val;
+    const respRaw = await safeGet('osha:responses:'+val);
+    STATE.responses = respRaw ? JSON.parse(respRaw) : {};
+    const assigned = (STATE.assignment[val] && STATE.assignment[val].order) || [];
+    if(assigned.length === 0){ STATE.view='nosegs'; render(); return; }
+    const next = assigned.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
+    if(!next){ STATE.view='done'; render(); return; }
+    beginSegment(next);
+  };
+  document.getElementById('adminLink').onclick = ()=>{ STATE.view='admin'; render(); };
+}
+
+function renderNoSegs(){
+  app.innerHTML = `
+    ${topbar(STATE.coder||'')}
+    <div class="card chrome">
+      <p>No segments are assigned to you yet. Assignments haven't been generated, or the segment set is empty. Check with Ash, or use Admin / setup below.</p>
+      <div class="btnrow"><button class="ghost" id="back">Back</button></div>
+    </div>
+    <footer class="foot"><a id="adminLink">Admin / setup</a></footer>
+  `;
+  document.getElementById('back').onclick = ()=>{ STATE.view='select'; render(); };
+  document.getElementById('adminLink').onclick = ()=>{ STATE.view='admin'; render(); };
+}
+
+function renderDone(){
+  app.innerHTML = `
+    ${topbar(STATE.coder||'')}
+    <div class="card chrome">
+      <p>You've completed all segments assigned to you. Thank you!</p>
+      <div class="btnrow"><button class="ghost" id="back">Switch coder</button></div>
+    </div>
+  `;
+  document.getElementById('back').onclick = ()=>{ STATE.view='select'; render(); };
+}
+
+/* ---------- Coding screen ---------- */
+function beginSegment(segmentId){
+  STATE.currentSegmentId = segmentId;
+  STATE.sectionIndex = 0;
+  STATE.sectionState = { answers:{}, texts:{}, sectionsDone:{}, sectionAnyYes:false, anyYesOverall:false, flagged:false, memo:'', rationale:'' };
+  STATE.view = 'code';
+  render();
+}
+
+function currentSegmentObj(){
+  return STATE.segments.find(s=>s.segmentId===STATE.currentSegmentId);
+}
+
+function assignedList(){
+  return (STATE.assignment[STATE.coder] && STATE.assignment[STATE.coder].order) || [];
+}
+
+function renderCode(){
+  const seg = currentSegmentObj();
+  const list = assignedList();
+  const doneCount = list.filter(id => STATE.responses[id] && STATE.responses[id].complete).length;
+
+  if(STATE.sectionIndex >= CODEBOOK.length){
+    return renderSectionL();
+  }
+
+  const section = CODEBOOK[STATE.sectionIndex];
+  const gateAnswered = section.id in STATE.sectionState.answers ? STATE.sectionState.answers[section.id] : null;
+
+  const progressHtml = CODEBOOK.map((s,i)=>{
+    let cls = '';
+    if(i < STATE.sectionIndex) cls = STATE.sectionState.sectionsDone[s.id]==='yes' ? 'done' : 'skipped';
+    if(i === STATE.sectionIndex) cls = 'current';
+    return `<span class="${cls}">${s.id}</span>`;
+  }).join('');
+
+  let itemsHtml = '';
+  if(gateAnswered === true){
+    itemsHtml = `<div class="items-list">` + section.items.map(item=>{
+      if(item.branchFrom && !STATE.sectionState.answers[item.branchFrom]) return '';
+      const inputType = section.single ? 'radio' : 'checkbox';
+      const inputName = section.single ? 'single_'+section.id : ('item_'+item.code);
+      const checked = STATE.sectionState.answers[item.code] ? 'checked' : '';
+      const rowClass = item.branchFrom ? 'item-row branch' : 'item-row';
+      let textField = '';
+      if(item.hasText && STATE.sectionState.answers[item.code]){
+        textField = `<div style="margin-left:26px;margin-top:4px;">
+          <input type="text" placeholder="${item.textLabel||'Specify'}" data-textfor="${item.code}" value="${(STATE.sectionState.texts[item.code]||'').replace(/"/g,'&quot;')}"/>
+        </div>`;
+      }
+      return `<div class="${rowClass}">
+          <input type="${inputType}" name="${inputName}" data-code="${item.code}" ${checked}/>
+          <div><span class="label">${item.label}</span><br><span class="q">${item.q}</span></div>
+        </div>${textField}`;
+    }).join('') + `</div>
+    <div class="btnrow"><button class="primary" id="continueBtn">Continue</button></div>
+    <div id="warnBox"></div>`;
+  }
+
+  app.innerHTML = `
+    ${topbar(`${STATE.coder} · segment ${doneCount+1} of ${list.length}`)}
+    <div class="progress chrome">${progressHtml}</div>
+    <div class="card">
+      <div class="segment-label chrome">Segment text (comment identity hidden)</div>
+      <div class="segment-text">${escapeHtml(seg.text)}</div>
+    </div>
+    <div class="card chrome">
+      <span class="section-tag">Section ${section.id} — ${section.title}</span>
+      <div class="gate-question">${section.gate}</div>
+      ${gateAnswered===true ? itemsHtml : `
+      <div class="btnrow">
+        <button id="gateYes">Yes</button>
+        <button id="gateNo">No</button>
+      </div>`}
+    </div>
+    ${STATE.sectionIndex>0 ? '<div class="btnrow"><button class="ghost" id="backBtn">Back a section</button></div>' : ''}
+  `;
+
+  if(gateAnswered !== true){
+    document.getElementById('gateYes').onclick = ()=>{
+      STATE.sectionState.answers[section.id] = true;
+      render();
+    };
+    document.getElementById('gateNo').onclick = ()=>{
+      STATE.sectionState.answers[section.id] = false;
+      STATE.sectionState.sectionsDone[section.id] = 'no';
+      STATE.sectionIndex++;
+      render();
+    };
+  } else {
+    document.querySelectorAll('[data-code]').forEach(el=>{
+      el.onchange = ()=>{
+        const code = el.getAttribute('data-code');
+        if(el.type==='radio'){
+          section.items.forEach(it=>{ STATE.sectionState.answers[it.code] = false; });
+        }
+        STATE.sectionState.answers[code] = el.checked;
+        render();
+      };
+    });
+    document.querySelectorAll('[data-textfor]').forEach(el=>{
+      el.oninput = ()=>{ STATE.sectionState.texts[el.getAttribute('data-textfor')] = el.value; };
+    });
+    if(document.getElementById('backBtn')){
+      document.getElementById('backBtn').onclick = ()=>{
+        STATE.sectionIndex--;
+        render();
+      };
+    }
+    document.getElementById('continueBtn').onclick = ()=>{
+      const anyYes = section.items.some(it => STATE.sectionState.answers[it.code]);
+      STATE.sectionState.sectionsDone[section.id] = anyYes ? 'yes' : 'no';
+      if(anyYes) STATE.sectionState.anyYesOverall = true;
+      // conflict checks (Section A)
+      let warn = '';
+      if(section.id==='A'){
+        if(STATE.sectionState.answers.supports_rule && STATE.sectionState.answers.opposes_rule){
+          STATE.sectionState.flagged = true;
+          warn = 'Flagged: both "Supports rule" and "Opposes rule" checked — needs discussion.';
+        }
+        if(STATE.sectionState.answers.withdraw_rule && STATE.sectionState.answers.requests_change){
+          STATE.sectionState.flagged = true;
+          warn = (warn?warn+' ':'') + 'Flagged: both "Withdraw rule" and "Requests change" checked — do not auto-resolve, needs discussion.';
+        }
+      }
+      if(warn){
+        document.getElementById('warnBox').innerHTML = `<div class="warn">${warn}</div>`;
+        setTimeout(()=>{ STATE.sectionIndex++; render(); }, 900);
+      } else {
+        STATE.sectionIndex++;
+        render();
+      }
+    };
+  }
+  if(document.getElementById('backBtn') && gateAnswered!==true){
+    document.getElementById('backBtn').onclick = ()=>{ STATE.sectionIndex--; render(); };
+  }
+}
+
+function renderSectionL(){
+  const seg = currentSegmentObj();
+  if(STATE.sectionState.anyYesOverall){
+    return renderSummary();
+  }
+  app.innerHTML = `
+    ${topbar(STATE.coder)}
+    <div class="card">
+      <div class="segment-label chrome">Segment text (comment identity hidden)</div>
+      <div class="segment-text">${escapeHtml(seg.text)}</div>
+    </div>
+    <div class="card chrome">
+      <span class="section-tag">Section L — Non-substantive check</span>
+      <div class="gate-question">Every gate in Sections A–K came back No for this segment. Is that correct because this segment is purely administrative/boilerplate (salutation, attachment header, disclaimer, plain contact info, or a bare signature)?</div>
+      <div class="btnrow">
+        <button id="lYes">Yes — non-substantive, as expected</button>
+        <button id="lNo">No — flag for discussion</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('lYes').onclick = ()=>{ STATE.sectionState.nonSubstantive = 'confirmed'; renderSummary(); };
+  document.getElementById('lNo').onclick = ()=>{ STATE.sectionState.nonSubstantive = 'flagged'; STATE.sectionState.flagged = true; renderSummary(); };
+}
+
+function renderSummary(){
+  app.innerHTML = `
+    ${topbar(STATE.coder)}
+    <div class="card chrome">
+      <p class="small">All sections reviewed for this segment. Add anything below, then save.</p>
+      <div class="field">
+        <label><input type="checkbox" id="flagCk" ${STATE.sectionState.flagged?'checked':''}/> Flag this segment for discussion</label>
+      </div>
+      <div class="field">
+        <label>Analyst memo (optional)</label>
+        <textarea id="memoBox">${STATE.sectionState.memo||''}</textarea>
+      </div>
+      <div class="field">
+        <label>Coder rationale (optional)</label>
+        <textarea id="rationaleBox">${STATE.sectionState.rationale||''}</textarea>
+      </div>
+      <div class="btnrow">
+        <button class="ghost" id="backBtn">Back to sections</button>
+        <button class="primary" id="saveBtn">Save & next segment</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('backBtn').onclick = ()=>{ STATE.sectionIndex = CODEBOOK.length-1; STATE.sectionState.sectionsDone[CODEBOOK[CODEBOOK.length-1].id] = undefined; render(); };
+  document.getElementById('saveBtn').onclick = async ()=>{
+    STATE.sectionState.flagged = document.getElementById('flagCk').checked;
+    STATE.sectionState.memo = document.getElementById('memoBox').value;
+    STATE.sectionState.rationale = document.getElementById('rationaleBox').value;
+    await saveCurrentSegment();
+    const list = assignedList();
+    const next = list.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
+    if(!next){ STATE.view='done'; render(); }
+    else { beginSegment(next); }
+  };
+}
+
+async function saveCurrentSegment(){
+  const seg = currentSegmentObj();
+  const record = {
+    complete:true,
+    commentId: seg.commentId,
+    answers: STATE.sectionState.answers,
+    texts: STATE.sectionState.texts,
+    nonSubstantive: STATE.sectionState.nonSubstantive || null,
+    flagged: !!STATE.sectionState.flagged,
+    memo: STATE.sectionState.memo || '',
+    rationale: STATE.sectionState.rationale || '',
+    codedAt: new Date().toISOString()
+  };
+  STATE.responses[seg.segmentId] = record;
+  await safeSet('osha:responses:'+STATE.coder, JSON.stringify(STATE.responses));
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* =========================================================
+   ADMIN
+   ========================================================= */
+function renderAdmin(){
+  const segCount = STATE.segments.length;
+  const assignRows = CODERS.map(c=>{
+    const n = (STATE.assignment[c] && STATE.assignment[c].order.length) || 0;
+    return `<tr><td>${c}</td><td>${n}</td></tr>`;
+  }).join('');
+  app.innerHTML = `
+    ${topbar('Admin / setup')}
+    <div class="card chrome">
+      <p class="small">Backend: ${backendConfigured() ? 'Apps Script URL is set.' : '<span style="color:var(--flag);">not configured — paste your web app URL into APPS_SCRIPT_URL near the top of the &lt;script&gt; block, then reload this page.</span>'}</p>
+      <div class="btnrow"><button id="testBackend">Test connection to sheet</button></div>
+      <div id="testResult"></div>
+    </div>
+    <div class="card chrome">
+      <p><strong>${segCount}</strong> segment(s) loaded.</p>
+      <table class="admin-table">
+        <tr><th>Coder</th><th># segments assigned</th></tr>
+        ${assignRows}
+      </table>
+      <div class="btnrow">
+        <button id="loadSample">Load sample data (${SAMPLE_SEGMENTS.length} segments)</button>
+        <button id="genAssign">Generate / regenerate assignments</button>
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>Paste segment data as JSON — array of {"commentId","segmentId","text"}</label>
+        <textarea id="jsonBox" style="min-height:120px;"></textarea>
+      </div>
+      <div class="btnrow"><button id="saveJson">Save segments from JSON</button></div>
+      <hr class="divider">
+      <div class="btnrow"><button id="exportBtn">View / export all responses (CSV)</button></div>
+      <div id="exportArea"></div>
+    </div>
+    <footer class="foot"><a id="backLink">Back to coder select</a></footer>
+  `;
+  document.getElementById('backLink').onclick = ()=>{ STATE.view='select'; render(); };
+  document.getElementById('testBackend').onclick = async ()=>{
+    document.getElementById('testResult').innerHTML = `<p class="small chrome">Testing…</p>`;
+    const result = await testBackend();
+    document.getElementById('testResult').innerHTML = `<p class="small chrome" style="color:${result.ok?'var(--good)':'var(--flag)'};">${result.msg}</p>`;
+  };
+  document.getElementById('loadSample').onclick = async ()=>{
+    if(STATE.segments.length>0 && !confirm('This will overwrite the current segment set. Continue?')) return;
+    STATE.segments = SAMPLE_SEGMENTS;
+    await safeSet('osha:segments', JSON.stringify(STATE.segments));
+    render();
+  };
+  document.getElementById('genAssign').onclick = async ()=>{
+    if(STATE.segments.length===0){ alert('Load segments first.'); return; }
+    if(!confirm('Regenerate assignments now? This does not erase existing coder responses, but new assignment order may leave some in-progress work orphaned.')) return;
+    STATE.assignment = generateAssignment();
+    await safeSet('osha:assignment', JSON.stringify(STATE.assignment));
+    render();
+  };
+  document.getElementById('saveJson').onclick = async ()=>{
+    const txt = document.getElementById('jsonBox').value.trim();
+    if(!txt) return;
+    try{
+      const parsed = JSON.parse(txt);
+      if(!Array.isArray(parsed)) throw new Error('not an array');
+      STATE.segments = parsed;
+      await safeSet('osha:segments', JSON.stringify(STATE.segments));
+      alert('Segments saved. Now click "Generate / regenerate assignments".');
+      render();
+    }catch(e){
+      alert('Could not parse JSON: '+e.message);
+    }
+  };
+  document.getElementById('exportBtn').onclick = async ()=>{
+    const rows = await buildExportRows();
+    const csv = rowsToCsv(rows);
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    document.getElementById('exportArea').innerHTML = `
+      <p class="small chrome">${rows.length} coded segment record(s) found across all coders.</p>
+      <a class="chrome" href="${url}" download="osha_pilot_coding_export.csv">Download CSV</a>
+    `;
+  };
+}
+
+async function buildExportRows(){
+  const allCols = [];
+  CODEBOOK.forEach(s => s.items.forEach(it => allCols.push(it.code)));
+  const textCols = [];
+  CODEBOOK.forEach(s => s.items.forEach(it => { if(it.hasText) textCols.push(it.code+'_specify'); }));
+  const header = ['coder','commentId','segmentId','flagged','non_substantive','memo','rationale','codedAt'].concat(allCols).concat(textCols);
+  const rows = [header];
+  for(const coder of CODERS){
+    const raw = await safeGet('osha:responses:'+coder);
+    if(!raw) continue;
+    const responses = JSON.parse(raw);
+    Object.keys(responses).forEach(segmentId=>{
+      const r = responses[segmentId];
+      if(!r.complete) return;
+      const row = [coder, r.commentId, segmentId, r.flagged?1:0, r.nonSubstantive||'', r.memo||'', r.rationale||'', r.codedAt||''];
+      allCols.forEach(c => row.push(r.answers && r.answers[c] ? 1 : 0));
+      textCols.forEach(c => { const code = c.replace('_specify',''); row.push((r.texts && r.texts[code]) || ''); });
+      rows.push(row);
+    });
+  }
+  return rows;
+}
+
+function rowsToCsv(rows){
+  return rows.map(r => r.map(cell=>{
+    const s = String(cell===undefined||cell===null ? '' : cell);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(',')).join('\n');
+}
+
+init();
+</script>
+</body>
+</html>
