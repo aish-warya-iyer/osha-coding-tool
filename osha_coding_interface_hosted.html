@@ -108,6 +108,7 @@
   }
   button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
   button:hover{filter:brightness(0.97);}
+  button:disabled{opacity:0.4; cursor:not-allowed; filter:none;}
   .items-list{
     margin-top:14px;
     display:flex;
@@ -351,7 +352,7 @@ const CODEBOOK = [
     ]},
 ];
 
-const CODERS = ['Kaitlyn','Michaela','Joe','Fiona Bradbury','Andrea Juarbe'];
+const CODERS = ['Kaitlyn','Mikayla','Joe','Fiona Bradbury','Andrea Juarbe'];
 const MIN_CODERS_PER_SEGMENT = 3;
 
 const SAMPLE_SEGMENTS = [
@@ -419,6 +420,17 @@ async function safeList(prefix){
     const data = await res.json();
     return (data && data.keys) ? data.keys : [];
   }catch(e){ console.error('safeList failed', e); return []; }
+}
+async function safeDelete(key){
+  if(!backendConfigured()) return false;
+  try{
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action:'delete', key })
+    });
+    const data = await res.json();
+    return !!(data && data.ok);
+  }catch(e){ console.error('safeDelete failed', e); return false; }
 }
 async function testBackend(){
   if(!backendConfigured()) return {ok:false, msg:'Apps Script URL not set yet — edit APPS_SCRIPT_URL near the top of the <script> block.'};
@@ -520,7 +532,7 @@ function renderSelect(){
     if(assigned.length === 0){ STATE.view='nosegs'; render(); return; }
     const next = assigned.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
     if(!next){ STATE.view='done'; render(); return; }
-    beginSegment(next);
+    await beginSegment(next);
   };
   document.getElementById('adminLink').onclick = ()=>{ STATE.view='admin'; render(); };
 }
@@ -550,10 +562,32 @@ function renderDone(){
 }
 
 /* ---------- Coding screen ---------- */
-function beginSegment(segmentId){
+function draftKey(){ return 'osha:draft:'+STATE.coder; }
+
+async function saveDraft(){
+  const draft = { segmentId: STATE.currentSegmentId, sectionIndex: STATE.sectionIndex, sectionState: STATE.sectionState };
+  await safeSet(draftKey(), JSON.stringify(draft));
+}
+async function clearDraft(){
+  await safeDelete(draftKey());
+}
+
+async function beginSegment(segmentId){
   STATE.currentSegmentId = segmentId;
   STATE.sectionIndex = 0;
-  STATE.sectionState = { answers:{}, texts:{}, sectionsDone:{}, sectionAnyYes:false, anyYesOverall:false, flagged:false, memo:'', rationale:'' };
+  STATE.sectionState = { answers:{}, texts:{}, sectionsDone:{}, sectionAnyYes:false, anyYesOverall:false, flagged:false, memo:'', rationale:'', confidence:null, confidenceExplain:'' };
+
+  const draftRaw = await safeGet(draftKey());
+  if(draftRaw){
+    try{
+      const draft = JSON.parse(draftRaw);
+      if(draft.segmentId === segmentId){
+        STATE.sectionIndex = draft.sectionIndex;
+        STATE.sectionState = draft.sectionState;
+        STATE.justResumed = true;
+      }
+    }catch(e){ /* ignore a corrupt draft, start fresh */ }
+  }
   STATE.view = 'code';
   render();
 }
@@ -585,31 +619,53 @@ function renderCode(){
     return `<span class="${cls}">${s.id}</span>`;
   }).join('');
 
+  function visibleItems(){
+    return section.items.filter(item => !item.branchFrom || STATE.sectionState.answers[item.branchFrom] === true);
+  }
+  function sectionComplete(){
+    const vis = visibleItems();
+    if(section.single) return vis.some(it => STATE.sectionState.answers[it.code] === true);
+    return vis.every(it => STATE.sectionState.answers[it.code] === true || STATE.sectionState.answers[it.code] === false);
+  }
+
   let itemsHtml = '';
   if(gateAnswered === true){
-    itemsHtml = `<div class="items-list">` + section.items.map(item=>{
-      if(item.branchFrom && !STATE.sectionState.answers[item.branchFrom]) return '';
-      const inputType = section.single ? 'radio' : 'checkbox';
-      const inputName = section.single ? 'single_'+section.id : ('item_'+item.code);
-      const checked = STATE.sectionState.answers[item.code] ? 'checked' : '';
+    itemsHtml = `<p class="small chrome">${section.single ? 'Select the one option that best fits — this section is single-select.' : 'Answer Yes or No for every item below — each is its own question, not a checklist.'}</p>
+    <div class="items-list">` + visibleItems().map(item=>{
+      const current = STATE.sectionState.answers[item.code]; // true, false, or undefined
       const rowClass = item.branchFrom ? 'item-row branch' : 'item-row';
       let textField = '';
-      if(item.hasText && STATE.sectionState.answers[item.code]){
+      if(item.hasText && current === true){
         textField = `<div style="margin-left:26px;margin-top:4px;">
           <input type="text" placeholder="${item.textLabel||'Specify'}" data-textfor="${item.code}" value="${(STATE.sectionState.texts[item.code]||'').replace(/"/g,'&quot;')}"/>
         </div>`;
       }
+      let buttonsHtml;
+      if(section.single){
+        const selCls = current === true ? 'primary' : '';
+        buttonsHtml = `<button type="button" class="${selCls}" data-code="${item.code}" data-single="true" style="padding:5px 12px;">${current===true ? 'Selected' : 'Select'}</button>`;
+      } else {
+        const yesCls = current === true ? 'primary' : '';
+        const noCls = current === false ? 'primary' : '';
+        buttonsHtml = `<button type="button" class="${yesCls}" data-code="${item.code}" data-value="true" style="padding:5px 12px;">Yes</button>
+            <button type="button" class="${noCls}" data-code="${item.code}" data-value="false" style="padding:5px 12px;">No</button>`;
+      }
       return `<div class="${rowClass}">
-          <input type="${inputType}" name="${inputName}" data-code="${item.code}" ${checked}/>
-          <div><span class="label">${item.label}</span><br><span class="q">${item.q}</span></div>
+          <div style="flex:1;"><span class="label">${item.label}</span><br><span class="q">${item.q}</span></div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">${buttonsHtml}</div>
         </div>${textField}`;
     }).join('') + `</div>
-    <div class="btnrow"><button class="primary" id="continueBtn">Continue</button></div>
+    <div class="btnrow"><button class="primary" id="continueBtn" ${sectionComplete()?'':'disabled'}>Continue</button></div>
+    ${sectionComplete() ? '' : '<p class="small chrome">Answer every item above to continue.</p>'}
     <div id="warnBox"></div>`;
   }
 
+  const resumeBanner = STATE.justResumed ? `<div class="flagbar chrome" style="color:var(--good);background:#E5F0E9;border-color:var(--good);">Resumed where you left off on this segment.</div>` : '';
+  STATE.justResumed = false;
+
   app.innerHTML = `
     ${topbar(`${STATE.coder} · segment ${doneCount+1} of ${list.length}`)}
+    ${resumeBanner}
     <div class="progress chrome">${progressHtml}</div>
     <div class="card">
       <div class="segment-label chrome">Segment text (comment identity hidden)</div>
@@ -624,29 +680,45 @@ function renderCode(){
         <button id="gateNo">No</button>
       </div>`}
     </div>
-    ${STATE.sectionIndex>0 ? '<div class="btnrow"><button class="ghost" id="backBtn">Back a section</button></div>' : ''}
+    <div class="btnrow">
+      ${STATE.sectionIndex>0 ? '<button class="ghost" id="backBtn">Back a section</button>' : ''}
+      <button class="ghost" id="saveProgressBtn">Save progress</button>
+      <span id="saveProgressMsg" class="small chrome"></span>
+    </div>
   `;
 
   if(gateAnswered !== true){
     document.getElementById('gateYes').onclick = ()=>{
       STATE.sectionState.answers[section.id] = true;
       render();
+      saveDraft();
     };
     document.getElementById('gateNo').onclick = ()=>{
       STATE.sectionState.answers[section.id] = false;
       STATE.sectionState.sectionsDone[section.id] = 'no';
       STATE.sectionIndex++;
       render();
+      saveDraft();
     };
   } else {
-    document.querySelectorAll('[data-code]').forEach(el=>{
-      el.onchange = ()=>{
+    document.querySelectorAll('button[data-code]').forEach(el=>{
+      el.onclick = ()=>{
         const code = el.getAttribute('data-code');
-        if(el.type==='radio'){
+        if(el.hasAttribute('data-single')){
           section.items.forEach(it=>{ STATE.sectionState.answers[it.code] = false; });
+          STATE.sectionState.answers[code] = true;
+        } else {
+          const value = el.getAttribute('data-value') === 'true';
+          STATE.sectionState.answers[code] = value;
+          // clear stale answers on any branch children if this item just went false
+          if(value === false){
+            section.items.forEach(it=>{
+              if(it.branchFrom === code) STATE.sectionState.answers[it.code] = undefined;
+            });
+          }
         }
-        STATE.sectionState.answers[code] = el.checked;
         render();
+        saveDraft();
       };
     });
     document.querySelectorAll('[data-textfor]').forEach(el=>{
@@ -658,34 +730,43 @@ function renderCode(){
         render();
       };
     }
-    document.getElementById('continueBtn').onclick = ()=>{
-      const anyYes = section.items.some(it => STATE.sectionState.answers[it.code]);
-      STATE.sectionState.sectionsDone[section.id] = anyYes ? 'yes' : 'no';
-      if(anyYes) STATE.sectionState.anyYesOverall = true;
-      // conflict checks (Section A)
-      let warn = '';
-      if(section.id==='A'){
-        if(STATE.sectionState.answers.supports_rule && STATE.sectionState.answers.opposes_rule){
-          STATE.sectionState.flagged = true;
-          warn = 'Flagged: both "Supports rule" and "Opposes rule" checked — needs discussion.';
+    const continueBtn = document.getElementById('continueBtn');
+    if(continueBtn && !continueBtn.disabled){
+      continueBtn.onclick = ()=>{
+        const anyYes = section.items.some(it => STATE.sectionState.answers[it.code] === true);
+        STATE.sectionState.sectionsDone[section.id] = anyYes ? 'yes' : 'no';
+        if(anyYes) STATE.sectionState.anyYesOverall = true;
+        // conflict checks (Section A)
+        let warn = '';
+        if(section.id==='A'){
+          if(STATE.sectionState.answers.supports_rule && STATE.sectionState.answers.opposes_rule){
+            STATE.sectionState.flagged = true;
+            warn = 'Flagged: both "Supports rule" and "Opposes rule" checked — needs discussion.';
+          }
+          if(STATE.sectionState.answers.withdraw_rule && STATE.sectionState.answers.requests_change){
+            STATE.sectionState.flagged = true;
+            warn = (warn?warn+' ':'') + 'Flagged: both "Withdraw rule" and "Requests change" checked — do not auto-resolve, needs discussion.';
+          }
         }
-        if(STATE.sectionState.answers.withdraw_rule && STATE.sectionState.answers.requests_change){
-          STATE.sectionState.flagged = true;
-          warn = (warn?warn+' ':'') + 'Flagged: both "Withdraw rule" and "Requests change" checked — do not auto-resolve, needs discussion.';
+        if(warn){
+          document.getElementById('warnBox').innerHTML = `<div class="warn">${warn}</div>`;
+          setTimeout(()=>{ STATE.sectionIndex++; saveDraft(); render(); }, 900);
+        } else {
+          STATE.sectionIndex++;
+          saveDraft();
+          render();
         }
-      }
-      if(warn){
-        document.getElementById('warnBox').innerHTML = `<div class="warn">${warn}</div>`;
-        setTimeout(()=>{ STATE.sectionIndex++; render(); }, 900);
-      } else {
-        STATE.sectionIndex++;
-        render();
-      }
-    };
+      };
+    }
   }
   if(document.getElementById('backBtn') && gateAnswered!==true){
     document.getElementById('backBtn').onclick = ()=>{ STATE.sectionIndex--; render(); };
   }
+  document.getElementById('saveProgressBtn').onclick = async ()=>{
+    document.getElementById('saveProgressMsg').textContent = 'Saving…';
+    await saveDraft();
+    document.getElementById('saveProgressMsg').textContent = 'Progress saved — safe to close this tab and come back later.';
+  };
 }
 
 function renderSectionL(){
@@ -713,38 +794,76 @@ function renderSectionL(){
 }
 
 function renderSummary(){
+  const conf = STATE.sectionState.confidence;
+  const showConfExplain = conf !== null && conf !== undefined && conf <= 3;
+  const flagged = !!STATE.sectionState.flagged;
+  const confOptions = [1,2,3,4,5].map(n=>{
+    const cls = conf===n ? 'primary' : '';
+    return `<button type="button" class="${cls}" data-conf="${n}" style="padding:6px 14px;">${n}</button>`;
+  }).join('');
+
   app.innerHTML = `
     ${topbar(STATE.coder)}
     <div class="card chrome">
       <p class="small">All sections reviewed for this segment. Add anything below, then save.</p>
+
       <div class="field">
-        <label><input type="checkbox" id="flagCk" ${STATE.sectionState.flagged?'checked':''}/> Flag this segment for discussion</label>
+        <label>How confident are you in how you coded this segment? (1 = low, 5 = high)</label>
+        <div class="btnrow" style="margin-top:2px;">${confOptions}</div>
       </div>
+      ${showConfExplain ? `
+      <div class="field">
+        <label>You rated your confidence ${conf}/5 — briefly explain your rationale for this confidence level</label>
+        <textarea id="confExplainBox">${STATE.sectionState.confidenceExplain||''}</textarea>
+      </div>` : ''}
+
+      <div class="field">
+        <label><input type="checkbox" id="flagCk" ${flagged?'checked':''}/> Flag this segment for discussion</label>
+      </div>
+      ${flagged ? `
+      <div class="field">
+        <label>Coder rationale — why are you flagging this?</label>
+        <textarea id="rationaleBox">${STATE.sectionState.rationale||''}</textarea>
+      </div>` : ''}
+
       <div class="field">
         <label>Analyst memo (optional)</label>
         <textarea id="memoBox">${STATE.sectionState.memo||''}</textarea>
       </div>
-      <div class="field">
-        <label>Coder rationale (optional)</label>
-        <textarea id="rationaleBox">${STATE.sectionState.rationale||''}</textarea>
-      </div>
+
       <div class="btnrow">
         <button class="ghost" id="backBtn">Back to sections</button>
-        <button class="primary" id="saveBtn">Save & next segment</button>
+        <button class="primary" id="saveBtn" ${conf?'':'disabled'}>Save & next segment</button>
       </div>
+      ${conf ? '' : '<p class="small chrome">Select a confidence rating above to save.</p>'}
     </div>
   `;
-  document.getElementById('backBtn').onclick = ()=>{ STATE.sectionIndex = CODEBOOK.length-1; STATE.sectionState.sectionsDone[CODEBOOK[CODEBOOK.length-1].id] = undefined; render(); };
-  document.getElementById('saveBtn').onclick = async ()=>{
-    STATE.sectionState.flagged = document.getElementById('flagCk').checked;
-    STATE.sectionState.memo = document.getElementById('memoBox').value;
-    STATE.sectionState.rationale = document.getElementById('rationaleBox').value;
-    await saveCurrentSegment();
-    const list = assignedList();
-    const next = list.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
-    if(!next){ STATE.view='done'; render(); }
-    else { beginSegment(next); }
+  document.querySelectorAll('[data-conf]').forEach(el=>{
+    el.onclick = ()=>{
+      STATE.sectionState.confidence = parseInt(el.getAttribute('data-conf'), 10);
+      saveDraft();
+      renderSummary();
+    };
+  });
+  document.getElementById('flagCk').onchange = (e)=>{
+    STATE.sectionState.flagged = e.target.checked;
+    renderSummary();
   };
+  document.getElementById('backBtn').onclick = ()=>{ STATE.sectionIndex = CODEBOOK.length-1; STATE.sectionState.sectionsDone[CODEBOOK[CODEBOOK.length-1].id] = undefined; render(); };
+  const saveBtn = document.getElementById('saveBtn');
+  if(saveBtn && !saveBtn.disabled){
+    saveBtn.onclick = async ()=>{
+      if(document.getElementById('rationaleBox')) STATE.sectionState.rationale = document.getElementById('rationaleBox').value;
+      if(document.getElementById('confExplainBox')) STATE.sectionState.confidenceExplain = document.getElementById('confExplainBox').value;
+      STATE.sectionState.memo = document.getElementById('memoBox').value;
+      await saveCurrentSegment();
+      await clearDraft();
+      const list = assignedList();
+      const next = list.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
+      if(!next){ STATE.view='done'; render(); }
+      else { await beginSegment(next); }
+    };
+  }
 }
 
 async function saveCurrentSegment(){
@@ -758,6 +877,8 @@ async function saveCurrentSegment(){
     flagged: !!STATE.sectionState.flagged,
     memo: STATE.sectionState.memo || '',
     rationale: STATE.sectionState.rationale || '',
+    confidence: STATE.sectionState.confidence || null,
+    confidenceExplain: STATE.sectionState.confidenceExplain || '',
     codedAt: new Date().toISOString()
   };
   STATE.responses[seg.segmentId] = record;
