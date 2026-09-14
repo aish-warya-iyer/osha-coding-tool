@@ -236,7 +236,7 @@ const CODEBOOK = [
       {code:'weaker_change', label:'Weaker change', q:'Does the requested change raise a threshold, request an exemption, extend a timeline, or narrow coverage?', branchFrom:'requests_change'},
       {code:'withdraw_rule', label:'Withdraw rule', q:'Does this segment ask OSHA to withdraw/scrap the rule entirely?'},
     ]},
-  { id:'B', title:'Commenter identity signals',
+  { id:'B', title:'Commenter identity signals', single:true,
     gate:"Does this segment reveal anything about who's speaking (role, occupation, organization, or family/identity connection)?",
     items:[
       {code:'farmworker', label:'Farmworker', q:'Does this segment identify the commenter as a current/former farmworker?'},
@@ -252,18 +252,18 @@ const CODEBOOK = [
       {code:'general_public', label:'General public', q:'Does this segment read as an individual with no organization/occupation/family connection stated?'},
       {code:'other_role', label:'Other role', q:"Does this segment identify the commenter's role/organization as something not covered above (e.g., staffing agency, vendor, consultant)?", hasText:true, textLabel:'Specify role'},
     ]},
-  { id:'C', title:'Narrative roles — victim, protagonist, antagonist',
+  { id:'C', title:'Narrative roles — victim, protagonist, antagonist', singleWithinGroup:true,
     gate:'Does this segment cast any group as harmed, as a central actor, or as a source of threat/blame?',
     items:[
-      {code:'farmworkers_harmed', label:'Farmworkers harmed', q:'Does this segment frame farmworkers as harmed, threatened, or burdened?'},
-      {code:'public_food_system', label:'Public/food system harmed', q:'Does this segment frame the general public/food system as harmed (closures, job losses, food prices)?'},
-      {code:'industry_harmed', label:'Industry harmed', q:'Does this segment frame industry/employers themselves as harmed (cost/compliance burden)?'},
-      {code:'workers_as_actor', label:'Workers as actor', q:'Does this segment center farmworkers/workers as the main actor or problem-solver?'},
-      {code:'employers_as_actor', label:'Employers as actor', q:'Does this segment center employers/growers as the main actor or problem-solver?'},
-      {code:'heat_climate', label:'Heat/climate as antagonist', q:'Does this segment frame heat/climate itself as the source of harm?'},
-      {code:'gov_overreach', label:'Gov overreach as antagonist', q:'Does this segment frame government regulation/overreach as the source of harm?'},
-      {code:'greed_profit', label:'Greed/profit as antagonist', q:'Does this segment frame corporate greed/profit motive as the source of harm?'},
-      {code:'power_abuse', label:'Power abuse as antagonist', q:"Does this segment frame an employer's or official's callous disregard/abuse of power (not profit-specific) as the source of harm?"},
+      {code:'farmworkers_harmed', label:'Farmworkers harmed', group:'victim', q:'Does this segment frame farmworkers as harmed, threatened, or burdened?'},
+      {code:'public_food_system', label:'Public/food system', group:'victim', q:'Does this segment frame the general public/food system as harmed (closures, job losses, food prices)?'},
+      {code:'industry_harmed', label:'Industry harmed', group:'victim', q:'Does this segment frame industry/employers themselves as harmed (cost/compliance burden)?'},
+      {code:'workers_as_actor', label:'Workers as actor', group:'protagonist', q:'Does this segment center farmworkers/workers as the main actor or problem-solver?'},
+      {code:'employers_as_actor', label:'Employers as actor', group:'protagonist', q:'Does this segment center employers/growers as the main actor or problem-solver?'},
+      {code:'heat_climate', label:'Heat/climate', group:'antagonist', q:'Does this segment frame heat/climate itself as the source of harm?'},
+      {code:'gov_overreach', label:'Gov overreach', group:'antagonist', q:'Does this segment frame government regulation/overreach as the source of harm?'},
+      {code:'greed_profit', label:'Greed/profit', group:'antagonist', q:'Does this segment frame corporate greed/profit motive as the source of harm?'},
+      {code:'power_abuse', label:'Power abuse', group:'antagonist', q:"Does this segment frame an employer's or official's callous disregard/abuse of power (not profit-specific) as the source of harm?"},
     ]},
   { id:'D', title:'Accountability signals',
     gate:'Does this segment assign responsibility for preventing/responding to heat illness to any actor?',
@@ -319,13 +319,13 @@ const CODEBOOK = [
       {code:'death_imagery', label:'Death imagery', q:'Does this segment mention death, mortality, fatality, or fatal heat illness?'},
       {code:'names_person_incident', label:'Names person/incident', q:'Does this segment name a specific real person, incident, or entity — as victim or wrongdoer — to make the argument feel more concrete, vivid, or urgent?', hasText:true, textLabel:'Who/what is named'},
     ]},
-  { id:'H', title:'Delegitimizing opponents',
+  { id:'H', title:'Delegitimizing opponents', sectionText:{code:'delegitimation_target', label:'Who or what is being delegitimized?'},
     gate:'Does this segment attempt to delegitimize an opposing stakeholder or the agency itself?',
     items:[
       {code:'emotional_anecdotal', label:'Emotional/anecdotal', q:'Does this segment dismiss an opposing view as merely emotional/anecdotal/unscientific?'},
       {code:'biased_self_interested', label:'Biased/self-interested', q:'Does this segment frame opposing stakeholders as biased/self-interested?'},
       {code:'unqualified', label:'Unqualified', q:"Does this segment question an opposing stakeholder's (not the agency's) qualifications/competence?"},
-      {code:'agency_process', label:'Agency process', q:"Does this segment challenge OSHA/the agency's own rulemaking process, analysis, or competence?", hasText:true, textLabel:'Delegitimation target'},
+      {code:'agency_process', label:'Agency process', q:"Does this segment challenge OSHA/the agency's own rulemaking process, analysis, or competence?"},
     ]},
   { id:'I', title:'Temporal frame', single:true,
     gate:'Does this segment describe a state of affairs, invoke precedent, or project forward to risk/recommendation?',
@@ -334,7 +334,7 @@ const CODEBOOK = [
       {code:'precedent_appeal', label:'Precedent appeal', q:'Does this segment invoke history, tradition, or continuity to lend weight to the claim?'},
       {code:'forward_projection', label:'Forward projection', q:'Does this segment project forward to a risk, consequence, or recommendation contingent on future action/inaction?'},
     ]},
-  { id:'J', title:'Emotional register',
+  { id:'J', title:'Emotional register', single:true,
     gate:'Does this segment have a distinguishable emotional tone (urgent, measured/technical, angry, or compassionate) beyond neutral reporting?',
     items:[
       {code:'urgent_alarmed', label:'Urgent/alarmed', q:"Does this segment's tone read as urgent or alarmed?"},
@@ -342,7 +342,7 @@ const CODEBOOK = [
       {code:'angry_oppositional', label:'Angry/oppositional', q:"Does this segment's tone read as angry or oppositional?"},
       {code:'compassionate', label:'Compassionate', q:"Does this segment's tone read as compassionate/empathetic?"},
     ]},
-  { id:'K', title:'Addressed audience',
+  { id:'K', title:'Addressed audience', single:true,
     gate:'Is this segment clearly directed at a specific audience (OSHA, the public, fellow stakeholders, or opponents)?',
     items:[
       {code:'addresses_osha', label:'Addresses OSHA', q:'Does this segment directly address OSHA/the agency?'},
@@ -624,14 +624,19 @@ function renderCode(){
   }
   function sectionComplete(){
     const vis = visibleItems();
-    if(section.single) return vis.some(it => STATE.sectionState.answers[it.code] === true);
+    if(section.single || section.singleWithinGroup) return vis.some(it => STATE.sectionState.answers[it.code] === true);
     return vis.every(it => STATE.sectionState.answers[it.code] === true || STATE.sectionState.answers[it.code] === false);
   }
 
   let itemsHtml = '';
   if(gateAnswered === true){
-    itemsHtml = `<p class="small chrome">${section.single ? 'Select the one option that best fits — this section is single-select.' : 'Answer Yes or No for every item below — each is its own question, not a checklist.'}</p>
-    <div class="items-list">` + visibleItems().map(item=>{
+    const modeNote = section.single ? 'Select the one option that best fits — this section is single-select.'
+      : section.singleWithinGroup ? 'For each group below, pick at most one option. A segment can have one from each group (e.g. one victim AND one antagonist) — just not two within the same group.'
+      : 'Answer Yes or No for every item below — each is its own question, not a checklist.';
+
+    const groupLabels = {victim:'Victim', protagonist:'Protagonist', antagonist:'Antagonist'};
+
+    function renderItemRow(item){
       const current = STATE.sectionState.answers[item.code]; // true, false, or undefined
       const rowClass = item.branchFrom ? 'item-row branch' : 'item-row';
       let textField = '';
@@ -641,9 +646,10 @@ function renderCode(){
         </div>`;
       }
       let buttonsHtml;
-      if(section.single){
+      if(section.single || section.singleWithinGroup){
         const selCls = current === true ? 'primary' : '';
-        buttonsHtml = `<button type="button" class="${selCls}" data-code="${item.code}" data-single="true" style="padding:5px 12px;">${current===true ? 'Selected' : 'Select'}</button>`;
+        const groupAttr = item.group ? ` data-group="${item.group}"` : '';
+        buttonsHtml = `<button type="button" class="${selCls}" data-code="${item.code}" data-toggle="true"${groupAttr} style="padding:5px 12px;">${current===true ? 'Selected' : 'Select'}</button>`;
       } else {
         const yesCls = current === true ? 'primary' : '';
         const noCls = current === false ? 'primary' : '';
@@ -654,7 +660,32 @@ function renderCode(){
           <div style="flex:1;"><span class="label">${item.label}</span><br><span class="q">${item.q}</span></div>
           <div style="display:flex;gap:6px;flex-shrink:0;">${buttonsHtml}</div>
         </div>${textField}`;
-    }).join('') + `</div>
+    }
+
+    let bodyHtml;
+    if(section.singleWithinGroup){
+      const groups = [];
+      visibleItems().forEach(it=>{ if(!groups.includes(it.group)) groups.push(it.group); });
+      bodyHtml = groups.map(g=>{
+        const groupItems = visibleItems().filter(it=>it.group===g);
+        return `<div class="small chrome" style="margin-top:12px;margin-bottom:2px;font-weight:600;">${groupLabels[g]||g}</div>` + groupItems.map(renderItemRow).join('');
+      }).join('');
+    } else {
+      bodyHtml = visibleItems().map(renderItemRow).join('');
+    }
+
+    let sectionTextHtml = '';
+    if(section.sectionText && section.items.some(it => STATE.sectionState.answers[it.code] === true)){
+      const st = section.sectionText;
+      sectionTextHtml = `<div class="field" style="margin-top:10px;">
+        <label>${st.label}</label>
+        <input type="text" data-sectiontextfor="${st.code}" value="${(STATE.sectionState.texts[st.code]||'').replace(/"/g,'&quot;')}"/>
+      </div>`;
+    }
+
+    itemsHtml = `<p class="small chrome">${modeNote}</p>
+    <div class="items-list">${bodyHtml}</div>
+    ${sectionTextHtml}
     <div class="btnrow"><button class="primary" id="continueBtn" ${sectionComplete()?'':'disabled'}>Continue</button></div>
     ${sectionComplete() ? '' : '<p class="small chrome">Answer every item above to continue.</p>'}
     <div id="warnBox"></div>`;
@@ -704,9 +735,12 @@ function renderCode(){
     document.querySelectorAll('button[data-code]').forEach(el=>{
       el.onclick = ()=>{
         const code = el.getAttribute('data-code');
-        if(el.hasAttribute('data-single')){
-          section.items.forEach(it=>{ STATE.sectionState.answers[it.code] = false; });
-          STATE.sectionState.answers[code] = true;
+        if(el.hasAttribute('data-toggle')){
+          const alreadyTrue = STATE.sectionState.answers[code] === true;
+          const group = el.getAttribute('data-group');
+          const peers = group ? section.items.filter(it=>it.group===group) : section.items;
+          peers.forEach(it=>{ STATE.sectionState.answers[it.code] = false; });
+          STATE.sectionState.answers[code] = !alreadyTrue;
         } else {
           const value = el.getAttribute('data-value') === 'true';
           STATE.sectionState.answers[code] = value;
@@ -723,6 +757,9 @@ function renderCode(){
     });
     document.querySelectorAll('[data-textfor]').forEach(el=>{
       el.oninput = ()=>{ STATE.sectionState.texts[el.getAttribute('data-textfor')] = el.value; };
+    });
+    document.querySelectorAll('[data-sectiontextfor]').forEach(el=>{
+      el.oninput = ()=>{ STATE.sectionState.texts[el.getAttribute('data-sectiontextfor')] = el.value; };
     });
     if(document.getElementById('backBtn')){
       document.getElementById('backBtn').onclick = ()=>{
@@ -976,7 +1013,10 @@ async function buildExportRows(){
   const allCols = [];
   CODEBOOK.forEach(s => s.items.forEach(it => allCols.push(it.code)));
   const textCols = [];
-  CODEBOOK.forEach(s => s.items.forEach(it => { if(it.hasText) textCols.push(it.code+'_specify'); }));
+  CODEBOOK.forEach(s => {
+    s.items.forEach(it => { if(it.hasText) textCols.push(it.code+'_specify'); });
+    if(s.sectionText) textCols.push(s.sectionText.code);
+  });
   const header = ['coder','commentId','segmentId','flagged','non_substantive','memo','rationale','codedAt'].concat(allCols).concat(textCols);
   const rows = [header];
   for(const coder of CODERS){
