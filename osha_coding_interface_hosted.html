@@ -962,6 +962,15 @@ function renderAdmin(){
       <div class="btnrow"><button id="exportBtn">View / export all responses (CSV)</button></div>
       <div id="exportArea"></div>
     </div>
+    <div class="card chrome">
+      <p class="small">Live status — pulls current data from the sheet each time you click.</p>
+      <div class="btnrow">
+        <button id="progressBtn">View coding progress</button>
+        <button id="flaggedBtn">View flagged segments for discussion</button>
+      </div>
+      <div id="progressArea"></div>
+      <div id="flaggedArea"></div>
+    </div>
     <footer class="foot"><a id="backLink">Back to coder select</a></footer>
   `;
   document.getElementById('backLink').onclick = ()=>{ STATE.view='select'; render(); };
@@ -1007,6 +1016,100 @@ function renderAdmin(){
       <a class="chrome" href="${url}" download="osha_pilot_coding_export.csv">Download CSV</a>
     `;
   };
+  document.getElementById('progressBtn').onclick = async ()=>{
+    document.getElementById('progressArea').innerHTML = `<p class="small chrome">Loading…</p>`;
+    const progress = await computeProgress();
+    const rows = CODERS.map(c=>{
+      const p = progress[c] || {assigned:0, completed:0};
+      const pct = p.assigned ? Math.round(100*p.completed/p.assigned) : 0;
+      return `<tr><td>${c}</td><td>${p.assigned}</td><td>${p.completed}</td><td>${pct}%</td></tr>`;
+    }).join('');
+    document.getElementById('progressArea').innerHTML = `
+      <table class="admin-table">
+        <tr><th>Coder</th><th>Assigned</th><th>Completed</th><th>% done</th></tr>
+        ${rows}
+      </table>`;
+  };
+  document.getElementById('flaggedBtn').onclick = async ()=>{
+    document.getElementById('flaggedArea').innerHTML = `<p class="small chrome">Loading…</p>`;
+    const flagged = await computeFlagged();
+    if(flagged.length === 0){
+      document.getElementById('flaggedArea').innerHTML = `<p class="small chrome">No segments flagged for discussion yet.</p>`;
+      return;
+    }
+    document.getElementById('flaggedArea').innerHTML = flagged.map(f => `
+      <div class="card" style="border-color:var(--flag);">
+        <div class="small chrome">${f.commentId} · ${f.segmentId}</div>
+        <div class="segment-text" style="font-size:1rem;">${escapeHtml(f.text)}</div>
+        <hr class="divider">
+        ${f.flags.map(fl => `
+          <div class="small chrome" style="margin-bottom:8px;">
+            <strong>${fl.coder}</strong>${fl.confidence ? ' · confidence ' + fl.confidence + '/5' : ''}<br>
+            ${fl.rationale ? escapeHtml(fl.rationale) : (fl.confidenceExplain ? escapeHtml(fl.confidenceExplain) : '<em>No rationale text given.</em>')}
+          </div>
+        `).join('')}
+        <div class="field">
+          <label>Decision from discussion (visible to everyone once saved)</label>
+          <textarea data-resolution-for="${f.segmentId}">${f.existingResolution||''}</textarea>
+        </div>
+        <div class="btnrow">
+          <button class="primary" data-save-resolution="${f.segmentId}">Save decision</button>
+          <span class="small chrome" data-resolution-msg="${f.segmentId}"></span>
+        </div>
+      </div>
+    `).join('');
+    document.querySelectorAll('[data-save-resolution]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const segId = btn.getAttribute('data-save-resolution');
+        const noteEl = document.querySelector(`[data-resolution-for="${segId}"]`);
+        const msgEl = document.querySelector(`[data-resolution-msg="${segId}"]`);
+        msgEl.textContent = 'Saving…';
+        const raw = await safeGet('osha:resolutions');
+        const resolutions = raw ? JSON.parse(raw) : {};
+        resolutions[segId] = { note: noteEl.value, savedAt: new Date().toISOString() };
+        const ok = await safeSet('osha:resolutions', JSON.stringify(resolutions));
+        msgEl.textContent = ok ? 'Saved.' : 'Save failed — try again.';
+      };
+    });
+  };
+}
+
+async function computeProgress(){
+  const progress = {};
+  for(const coder of CODERS){
+    const assigned = (STATE.assignment[coder] && STATE.assignment[coder].order.length) || 0;
+    const raw = await safeGet('osha:responses:'+coder);
+    const responses = raw ? JSON.parse(raw) : {};
+    const completed = Object.values(responses).filter(r => r.complete).length;
+    progress[coder] = { assigned, completed };
+  }
+  return progress;
+}
+
+async function computeFlagged(){
+  const resRaw = await safeGet('osha:resolutions');
+  const resolutions = resRaw ? JSON.parse(resRaw) : {};
+  const bySegment = {};
+  for(const coder of CODERS){
+    const raw = await safeGet('osha:responses:'+coder);
+    const responses = raw ? JSON.parse(raw) : {};
+    Object.keys(responses).forEach(segId=>{
+      const r = responses[segId];
+      if(!r.complete || !r.flagged) return;
+      if(!bySegment[segId]) bySegment[segId] = [];
+      bySegment[segId].push({ coder, rationale: r.rationale, confidence: r.confidence, confidenceExplain: r.confidenceExplain });
+    });
+  }
+  return Object.keys(bySegment).map(segId=>{
+    const seg = STATE.segments.find(s=>s.segmentId===segId);
+    return {
+      segmentId: segId,
+      commentId: seg ? seg.commentId : '(unknown — segment data not loaded)',
+      text: seg ? seg.text : '(segment text unavailable — reload segment data)',
+      flags: bySegment[segId],
+      existingResolution: resolutions[segId] ? resolutions[segId].note : ''
+    };
+  });
 }
 
 async function buildExportRows(){
@@ -1017,7 +1120,9 @@ async function buildExportRows(){
     s.items.forEach(it => { if(it.hasText) textCols.push(it.code+'_specify'); });
     if(s.sectionText) textCols.push(s.sectionText.code);
   });
-  const header = ['coder','commentId','segmentId','flagged','non_substantive','memo','rationale','codedAt'].concat(allCols).concat(textCols);
+  const resRaw = await safeGet('osha:resolutions');
+  const resolutions = resRaw ? JSON.parse(resRaw) : {};
+  const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols);
   const rows = [header];
   for(const coder of CODERS){
     const raw = await safeGet('osha:responses:'+coder);
@@ -1026,7 +1131,8 @@ async function buildExportRows(){
     Object.keys(responses).forEach(segmentId=>{
       const r = responses[segmentId];
       if(!r.complete) return;
-      const row = [coder, r.commentId, segmentId, r.flagged?1:0, r.nonSubstantive||'', r.memo||'', r.rationale||'', r.codedAt||''];
+      const resolution = resolutions[segmentId] ? resolutions[segmentId].note : '';
+      const row = [coder, r.commentId, segmentId, r.flagged?1:0, resolution, r.nonSubstantive||'', r.memo||'', r.rationale||'', r.confidence||'', r.confidenceExplain||'', r.codedAt||''];
       allCols.forEach(c => row.push(r.answers && r.answers[c] ? 1 : 0));
       textCols.forEach(c => { const code = c.replace('_specify',''); row.push((r.texts && r.texts[code]) || ''); });
       rows.push(row);
