@@ -705,7 +705,7 @@ function renderCode(){
     <div class="card chrome">
       <span class="section-tag">Section ${section.id} — ${section.title}</span>
       <div class="gate-question">${section.gate}</div>
-      ${gateAnswered===true ? itemsHtml : `
+      ${gateAnswered===true ? `<div class="small chrome" style="margin-bottom:4px;">Gate answer: <strong>Yes</strong> — <a id="revertGate" style="cursor:pointer;text-decoration:underline;">meant to click No? change it</a></div>${itemsHtml}` : `
       <div class="btnrow">
         <button id="gateYes">Yes</button>
         <button id="gateNo">No</button>
@@ -732,6 +732,16 @@ function renderCode(){
       saveDraft();
     };
   } else {
+    document.getElementById('revertGate').onclick = ()=>{
+      if(!confirm('This clears any answers already given in this section. Continue?')) return;
+      section.items.forEach(it=>{ STATE.sectionState.answers[it.code] = undefined; STATE.sectionState.texts[it.code] = undefined; });
+      if(section.sectionText) STATE.sectionState.texts[section.sectionText.code] = undefined;
+      STATE.sectionState.answers[section.id] = false;
+      STATE.sectionState.sectionsDone[section.id] = 'no';
+      STATE.sectionIndex++;
+      render();
+      saveDraft();
+    };
     document.querySelectorAll('button[data-code]').forEach(el=>{
       el.onclick = ()=>{
         const code = el.getAttribute('data-code');
