@@ -977,9 +977,11 @@ function renderAdmin(){
       <div class="btnrow">
         <button id="progressBtn">View coding progress</button>
         <button id="flaggedBtn">View flagged segments for discussion</button>
+        <button id="disagreeBtn">View coding disagreements</button>
       </div>
       <div id="progressArea"></div>
       <div id="flaggedArea"></div>
+      <div id="disagreeArea"></div>
     </div>
     <footer class="foot"><a id="backLink">Back to coder select</a></footer>
   `;
@@ -1082,6 +1084,70 @@ function renderAdmin(){
       };
     });
   };
+  document.getElementById('disagreeBtn').onclick = async ()=>{
+    document.getElementById('disagreeArea').innerHTML = `<p class="small chrome">Loading…</p>`;
+    const results = await computeDisagreements();
+    if(results.length === 0){
+      document.getElementById('disagreeArea').innerHTML = `<p class="small chrome">No overlapping-coder disagreements found yet — either too few segments have 2+ completed coders, or everyone's agreeing so far.</p>`;
+      return;
+    }
+    const codeLabel = (code)=>{
+      for(const s of CODEBOOK){ const it = s.items.find(i=>i.code===code); if(it) return `${s.id} — ${it.label}`; }
+      return code;
+    };
+    document.getElementById('disagreeArea').innerHTML = `<p class="small chrome">${results.length} segment(s) with disagreement, sorted by most fields in dispute.</p>` +
+      results.map(f => `
+      <div class="card" style="border-color:var(--accent);">
+        <div class="small chrome">${f.commentId} · ${f.segmentId} — coded by: ${f.coders.join(', ')}</div>
+        <div class="segment-text" style="font-size:1rem;">${escapeHtml(f.text)}</div>
+        <hr class="divider">
+        <div class="small chrome"><strong>Disagreed on:</strong></div>
+        <ul>${f.disagreedCodes.map(c=>`<li class="small chrome">${codeLabel(c)}</li>`).join('')}</ul>
+        ${f.memos.length ? `<hr class="divider"><div class="small chrome"><strong>Analyst memos:</strong></div>` + f.memos.map(m=>`<div class="small chrome" style="margin-bottom:4px;"><strong>${m.coder}:</strong> ${escapeHtml(m.memo)}</div>`).join('') : ''}
+      </div>
+    `).join('');
+  };
+}
+
+async function computeDisagreements(){
+  const byCoder = {};
+  for(const coder of CODERS){
+    const raw = await safeGet('osha:responses:'+coder);
+    byCoder[coder] = raw ? JSON.parse(raw) : {};
+  }
+  const bySegment = {};
+  CODERS.forEach(coder=>{
+    Object.keys(byCoder[coder]).forEach(segId=>{
+      const r = byCoder[coder][segId];
+      if(!r.complete) return;
+      if(!bySegment[segId]) bySegment[segId] = [];
+      bySegment[segId].push({ coder, r });
+    });
+  });
+  const allCodes = [];
+  CODEBOOK.forEach(s => s.items.forEach(it => allCodes.push(it.code)));
+
+  const results = [];
+  Object.keys(bySegment).forEach(segId=>{
+    const entries = bySegment[segId];
+    if(entries.length < 2) return;
+    const disagreedCodes = allCodes.filter(code=>{
+      const vals = entries.map(e => !!(e.r.answers && e.r.answers[code]));
+      return !vals.every(v => v === vals[0]);
+    });
+    if(disagreedCodes.length === 0) return;
+    const seg = STATE.segments.find(s=>s.segmentId===segId);
+    results.push({
+      segmentId: segId,
+      commentId: seg ? seg.commentId : '(unknown — segment data not loaded)',
+      text: seg ? seg.text : '(segment text unavailable)',
+      coders: entries.map(e=>e.coder),
+      disagreedCodes,
+      memos: entries.filter(e=>e.r.memo).map(e=>({coder:e.coder, memo:e.r.memo}))
+    });
+  });
+  results.sort((a,b)=> b.disagreedCodes.length - a.disagreedCodes.length);
+  return results;
 }
 
 async function computeProgress(){
