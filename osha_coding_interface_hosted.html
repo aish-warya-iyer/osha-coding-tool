@@ -375,6 +375,7 @@ let STATE = {
   currentSegmentId: null,
   sectionIndex: 0,
   sectionState: {},       // working answers for the segment currently being coded
+  reviewMode: false,      // true when re-opening an already-completed segment to check/correct it
   view: 'loading'
 };
 
@@ -492,6 +493,7 @@ function render(){
   if(STATE.view === 'code') return renderCode();
   if(STATE.view === 'done') return renderDone();
   if(STATE.view === 'nosegs') return renderNoSegs();
+  if(STATE.view === 'mylist') return renderMyList();
 }
 
 function topbar(subtitle){
@@ -518,23 +520,80 @@ function renderSelect(){
       </div>
       <div class="btnrow">
         <button class="primary" id="startBtn">Start coding</button>
+        <button class="ghost" id="myListBtn">Go to a specific segment</button>
       </div>
     </div>
     <footer class="foot"><a id="adminLink">Admin / setup</a></footer>
   `;
-  document.getElementById('startBtn').onclick = async ()=>{
-    const val = document.getElementById('coderSelect').value;
-    if(!val) return;
+  async function loadCoderData(val){
     STATE.coder = val;
     const respRaw = await safeGet('osha:responses:'+val);
     STATE.responses = respRaw ? JSON.parse(respRaw) : {};
+  }
+  document.getElementById('startBtn').onclick = async ()=>{
+    const val = document.getElementById('coderSelect').value;
+    if(!val) return;
+    await loadCoderData(val);
     const assigned = (STATE.assignment[val] && STATE.assignment[val].order) || [];
     if(assigned.length === 0){ STATE.view='nosegs'; render(); return; }
     const next = assigned.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
     if(!next){ STATE.view='done'; render(); return; }
+    STATE.reviewMode = false;
     await beginSegment(next);
   };
+  document.getElementById('myListBtn').onclick = async ()=>{
+    const val = document.getElementById('coderSelect').value;
+    if(!val) return;
+    await loadCoderData(val);
+    const assigned = (STATE.assignment[val] && STATE.assignment[val].order) || [];
+    if(assigned.length === 0){ STATE.view='nosegs'; render(); return; }
+    STATE.view = 'mylist';
+    render();
+  };
   document.getElementById('adminLink').onclick = ()=>{ STATE.view='admin'; render(); };
+}
+
+/* ---------- My segments: list + jump to any assigned segment ---------- */
+function renderMyList(){
+  const list = assignedList();
+  const draftKeyName = draftKey();
+  const rows = list.map((id, i)=>{
+    const rec = STATE.responses[id];
+    const seg = STATE.segments.find(s=>s.segmentId===id);
+    const preview = seg ? escapeHtml(seg.text.slice(0,90)) + (seg.text.length>90?'…':'') : '(segment text not found)';
+    let statusLabel, statusColor;
+    if(rec && rec.complete){ statusLabel = rec.flagged ? 'Done · flagged' : 'Done'; statusColor = 'var(--good)'; }
+    else { statusLabel = 'Not finished'; statusColor = 'var(--flag)'; }
+    return `<div class="item-row" style="align-items:flex-start;">
+        <div style="flex:1;">
+          <div><strong>${i+1}.</strong> <span class="small chrome">${id}</span> — <span style="color:${statusColor};">${statusLabel}</span></div>
+          <div class="small chrome">${preview}</div>
+        </div>
+        <button type="button" data-jump="${id}" style="flex-shrink:0;">${rec && rec.complete ? 'Review' : 'Open'}</button>
+      </div>`;
+  }).join('');
+
+  app.innerHTML = `
+    ${topbar(`${STATE.coder} · all assigned segments`)}
+    <div class="card chrome">
+      <p class="small">Click any segment below to open it directly — including ones you've already finished, so you can double-check or correct an answer.</p>
+      <div class="items-list">${rows || '<p class="small chrome">No segments assigned.</p>'}</div>
+      <div class="btnrow" style="margin-top:12px;"><button class="ghost" id="back">Back</button></div>
+    </div>
+  `;
+  document.getElementById('back').onclick = ()=>{ STATE.view='select'; render(); };
+  document.querySelectorAll('[data-jump]').forEach(el=>{
+    el.onclick = async ()=>{
+      const id = el.getAttribute('data-jump');
+      const rec = STATE.responses[id];
+      if(rec && rec.complete){
+        await reviewCompletedSegment(id);
+      } else {
+        STATE.reviewMode = false;
+        await beginSegment(id);
+      }
+    };
+  });
 }
 
 function renderNoSegs(){
@@ -565,6 +624,9 @@ function renderDone(){
 function draftKey(){ return 'osha:draft:'+STATE.coder; }
 
 async function saveDraft(){
+  // While reviewing an already-completed segment, never touch the shared draft slot —
+  // it may belong to a different, still-in-progress segment and must not be clobbered.
+  if(STATE.reviewMode) return;
   const draft = { segmentId: STATE.currentSegmentId, sectionIndex: STATE.sectionIndex, sectionState: STATE.sectionState };
   await safeSet(draftKey(), JSON.stringify(draft));
 }
@@ -573,6 +635,7 @@ async function clearDraft(){
 }
 
 async function beginSegment(segmentId){
+  STATE.reviewMode = false;
   STATE.currentSegmentId = segmentId;
   STATE.sectionIndex = 0;
   STATE.sectionState = { answers:{}, texts:{}, sectionsDone:{}, sectionAnyYes:false, anyYesOverall:false, flagged:false, memo:'', rationale:'', confidence:null, confidenceExplain:'' };
@@ -588,6 +651,38 @@ async function beginSegment(segmentId){
       }
     }catch(e){ /* ignore a corrupt draft, start fresh */ }
   }
+  STATE.view = 'code';
+  render();
+}
+
+/* Re-open a segment that's already been fully coded, so a coder can double-check
+   or correct an earlier answer. This reconstructs the working state from the saved
+   record rather than from the (unrelated) in-progress draft. */
+async function reviewCompletedSegment(segmentId){
+  STATE.reviewMode = true;
+  STATE.currentSegmentId = segmentId;
+  STATE.sectionIndex = 0;
+  const rec = STATE.responses[segmentId] || {};
+  const answers = Object.assign({}, rec.answers || {});
+  const sectionsDone = {};
+  CODEBOOK.forEach(s=>{
+    if(answers[s.id] === true) sectionsDone[s.id] = 'yes';
+    else if(answers[s.id] === false) sectionsDone[s.id] = 'no';
+  });
+  STATE.sectionState = {
+    answers: answers,
+    texts: Object.assign({}, rec.texts || {}),
+    sectionsDone: sectionsDone,
+    sectionAnyYes: false,
+    anyYesOverall: CODEBOOK.some(s=>answers[s.id]===true),
+    flagged: !!rec.flagged,
+    memo: rec.memo || '',
+    rationale: rec.rationale || '',
+    confidence: rec.confidence || null,
+    confidenceExplain: rec.confidenceExplain || '',
+    nonSubstantive: rec.nonSubstantive || null
+  };
+  STATE.justResumed = false;
   STATE.view = 'code';
   render();
 }
@@ -693,10 +788,12 @@ function renderCode(){
 
   const resumeBanner = STATE.justResumed ? `<div class="flagbar chrome" style="color:var(--good);background:#E5F0E9;border-color:var(--good);">Resumed where you left off on this segment.</div>` : '';
   STATE.justResumed = false;
+  const reviewBanner = STATE.reviewMode ? `<div class="flagbar chrome" style="color:#8a6d00;background:#FFF6DD;border-color:#e0c060;">Reviewing a segment you already finished. Step through to "Save" at the end to update the saved answer — nothing changes until then.</div>` : '';
 
   app.innerHTML = `
     ${topbar(`${STATE.coder} · segment ${doneCount+1} of ${list.length}`)}
     ${resumeBanner}
+    ${reviewBanner}
     <div class="progress chrome">${progressHtml}</div>
     <div class="card">
       <div class="segment-label chrome">Segment text (comment identity hidden)</div>
@@ -713,8 +810,9 @@ function renderCode(){
     </div>
     <div class="btnrow">
       ${STATE.sectionIndex>0 ? '<button class="ghost" id="backBtn">Back a section</button>' : ''}
-      <button class="ghost" id="saveProgressBtn">Save progress</button>
-      <span id="saveProgressMsg" class="small chrome"></span>
+      ${STATE.reviewMode
+        ? '<button class="ghost" id="exitReviewBtn">Back to my segments</button>'
+        : '<button class="ghost" id="saveProgressBtn">Save progress</button><span id="saveProgressMsg" class="small chrome"></span>'}
     </div>
   `;
 
@@ -809,11 +907,20 @@ function renderCode(){
   if(document.getElementById('backBtn') && gateAnswered!==true){
     document.getElementById('backBtn').onclick = ()=>{ STATE.sectionIndex--; render(); };
   }
-  document.getElementById('saveProgressBtn').onclick = async ()=>{
-    document.getElementById('saveProgressMsg').textContent = 'Saving…';
-    await saveDraft();
-    document.getElementById('saveProgressMsg').textContent = 'Progress saved — safe to close this tab and come back later.';
-  };
+  if(document.getElementById('saveProgressBtn')){
+    document.getElementById('saveProgressBtn').onclick = async ()=>{
+      document.getElementById('saveProgressMsg').textContent = 'Saving…';
+      await saveDraft();
+      document.getElementById('saveProgressMsg').textContent = 'Progress saved — safe to close this tab and come back later.';
+    };
+  }
+  if(document.getElementById('exitReviewBtn')){
+    document.getElementById('exitReviewBtn').onclick = ()=>{
+      STATE.reviewMode = false;
+      STATE.view = 'mylist';
+      render();
+    };
+  }
 }
 
 function renderSectionL(){
@@ -880,7 +987,7 @@ function renderSummary(){
 
       <div class="btnrow">
         <button class="ghost" id="backBtn">Back to sections</button>
-        <button class="primary" id="saveBtn" ${conf?'':'disabled'}>Save & next segment</button>
+        <button class="primary" id="saveBtn" ${conf?'':'disabled'}>${STATE.reviewMode ? 'Save correction' : 'Save & next segment'}</button>
       </div>
       ${conf ? '' : '<p class="small chrome">Select a confidence rating above to save.</p>'}
     </div>
@@ -904,6 +1011,15 @@ function renderSummary(){
       if(document.getElementById('confExplainBox')) STATE.sectionState.confidenceExplain = document.getElementById('confExplainBox').value;
       STATE.sectionState.memo = document.getElementById('memoBox').value;
       await saveCurrentSegment();
+      if(STATE.reviewMode){
+        // Reviewing a finished segment never touched the shared draft slot, so there's
+        // nothing to clear here — clearing it would risk wiping a different, still
+        // in-progress segment's saved draft.
+        STATE.reviewMode = false;
+        STATE.view = 'mylist';
+        render();
+        return;
+      }
       await clearDraft();
       const list = assignedList();
       const next = list.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
