@@ -215,6 +215,26 @@
     color:var(--ink-soft);
     margin-bottom:4px;
   }
+  /* ---- Consensus review ---- */
+  :root{ --agree-bg:#DCEBDF; --disagree-bg:#F5D8D3; --none-bg:#ECEAE4; }
+  table.cons-table{ width:100%; border-collapse:collapse; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:0.84rem; margin:6px 0 14px; }
+  table.cons-table th, table.cons-table td{ border:1px solid var(--rule); padding:5px 8px; text-align:left; vertical-align:top; }
+  table.cons-table thead th{ background:var(--paper); font-weight:600; }
+  table.cons-table tr.c-agree td, table.cons-table tr.c-agree th{ background:var(--agree-bg); }
+  table.cons-table tr.c-disagree td, table.cons-table tr.c-disagree th{ background:var(--disagree-bg); }
+  table.cons-table tr.c-none td, table.cons-table tr.c-none th{ background:var(--none-bg); color:var(--ink-soft); }
+  table.cons-table tr.gate-row th{ font-weight:600; }
+  table.cons-table{ table-layout:fixed; }
+  table.cons-table th:first-child{ width:40%; }
+  table.cons-table th:last-child, table.cons-table td.final{ width:130px; }
+  table.cons-table td.final{ background:var(--paper-raised) !important; }
+  .cons-hide-gray tr.c-none:not(.gate-row){ display:none; }
+  .cons-tag{ display:inline-block; font-size:0.72rem; padding:1px 7px; border-radius:10px; border:1px solid var(--rule); margin-left:6px; font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+  .cons-tag.flag{ background:var(--flag-soft); border-color:var(--flag); color:var(--flag); }
+  .cons-tag.dis{ background:var(--disagree-bg); }
+  .cons-tag.ok{ background:var(--agree-bg); }
+  .cons-legend span{ display:inline-block; padding:2px 8px; margin-right:6px; border:1px solid var(--rule); font-size:0.78rem; }
+  .cons-note{ border-left:3px solid var(--rule); padding:2px 10px; margin:4px 0 8px; font-size:0.86rem; }
 </style>
 </head>
 <body>
@@ -499,6 +519,10 @@ function generateAssignment(){
    RENDER: ROUTER
    ========================================================= */
 function render(){
+  // The consensus-review screen shows several coders side by side, so it needs more width.
+  app.style.maxWidth = (STATE.view === 'consensus') ? '1100px' : '';
+  if(STATE.view !== 'consensus') app.classList.remove('cons-hide-gray');
+  if(STATE.view === 'consensus') return renderConsensus();
   if(STATE.view === 'select') return renderSelect();
   if(STATE.view === 'admin') return renderAdmin();
   if(STATE.view === 'code') return renderCode();
@@ -1158,12 +1182,9 @@ function renderAdmin(){
       <p class="small">Live status — pulls current data from the sheet each time you click.</p>
       <div class="btnrow">
         <button id="progressBtn">View coding progress</button>
-        <button id="flaggedBtn">View flagged segments for discussion</button>
-        <button id="disagreeBtn">View coding disagreements</button>
+        <button id="consensusBtn" class="primary">Open consensus review (flagged + disagreements)</button>
       </div>
       <div id="progressArea"></div>
-      <div id="flaggedArea"></div>
-      <div id="disagreeArea"></div>
     </div>
     <footer class="foot"><a id="backLink">Back to coder select</a></footer>
   `;
@@ -1224,111 +1245,7 @@ function renderAdmin(){
         ${rows}
       </table>`;
   };
-  document.getElementById('flaggedBtn').onclick = async ()=>{
-    document.getElementById('flaggedArea').innerHTML = `<p class="small chrome">Loading…</p>`;
-    const flagged = await computeFlagged();
-    if(flagged.length === 0){
-      document.getElementById('flaggedArea').innerHTML = `<p class="small chrome">No segments flagged for discussion yet.</p>`;
-      return;
-    }
-    document.getElementById('flaggedArea').innerHTML = flagged.map(f => `
-      <div class="card" style="border-color:var(--flag);">
-        <div class="small chrome">${f.commentId} · ${f.segmentId}</div>
-        <div class="segment-text" style="font-size:1rem;">${escapeHtml(f.text)}</div>
-        <hr class="divider">
-        ${f.flags.map(fl => `
-          <div class="small chrome" style="margin-bottom:8px;">
-            <strong>${fl.coder}</strong>${fl.confidence ? ' · confidence ' + fl.confidence + '/5' : ''}<br>
-            ${fl.rationale ? escapeHtml(fl.rationale) : (fl.confidenceExplain ? escapeHtml(fl.confidenceExplain) : '<em>No rationale text given.</em>')}
-          </div>
-        `).join('')}
-        <div class="field">
-          <label>Decision from discussion (visible to everyone once saved)</label>
-          <textarea data-resolution-for="${f.segmentId}">${f.existingResolution||''}</textarea>
-        </div>
-        <div class="btnrow">
-          <button class="primary" data-save-resolution="${f.segmentId}">Save decision</button>
-          <span class="small chrome" data-resolution-msg="${f.segmentId}"></span>
-        </div>
-      </div>
-    `).join('');
-    document.querySelectorAll('[data-save-resolution]').forEach(btn=>{
-      btn.onclick = async ()=>{
-        const segId = btn.getAttribute('data-save-resolution');
-        const noteEl = document.querySelector(`[data-resolution-for="${segId}"]`);
-        const msgEl = document.querySelector(`[data-resolution-msg="${segId}"]`);
-        msgEl.textContent = 'Saving…';
-        const raw = await safeGet('osha:resolutions');
-        const resolutions = raw ? JSON.parse(raw) : {};
-        resolutions[segId] = { note: noteEl.value, savedAt: new Date().toISOString() };
-        const ok = await safeSet('osha:resolutions', JSON.stringify(resolutions));
-        msgEl.textContent = ok ? 'Saved.' : 'Save failed — try again.';
-      };
-    });
-  };
-  document.getElementById('disagreeBtn').onclick = async ()=>{
-    document.getElementById('disagreeArea').innerHTML = `<p class="small chrome">Loading…</p>`;
-    const results = await computeDisagreements();
-    if(results.length === 0){
-      document.getElementById('disagreeArea').innerHTML = `<p class="small chrome">No overlapping-coder disagreements found yet — either too few segments have 2+ completed coders, or everyone's agreeing so far.</p>`;
-      return;
-    }
-    const codeLabel = (code)=>{
-      for(const s of CODEBOOK){ const it = s.items.find(i=>i.code===code); if(it) return `${s.id} — ${it.label}`; }
-      return code;
-    };
-    document.getElementById('disagreeArea').innerHTML = `<p class="small chrome">${results.length} segment(s) with disagreement, sorted by most fields in dispute.</p>` +
-      results.map(f => `
-      <div class="card" style="border-color:var(--accent);">
-        <div class="small chrome">${f.commentId} · ${f.segmentId} — coded by: ${f.coders.join(', ')}</div>
-        <div class="segment-text" style="font-size:1rem;">${escapeHtml(f.text)}</div>
-        <hr class="divider">
-        <div class="small chrome"><strong>Disagreed on:</strong></div>
-        <ul>${f.disagreedCodes.map(c=>`<li class="small chrome">${codeLabel(c)}</li>`).join('')}</ul>
-        ${f.memos.length ? `<hr class="divider"><div class="small chrome"><strong>Analyst memos:</strong></div>` + f.memos.map(m=>`<div class="small chrome" style="margin-bottom:4px;"><strong>${m.coder}:</strong> ${escapeHtml(m.memo)}</div>`).join('') : ''}
-      </div>
-    `).join('');
-  };
-}
-
-async function computeDisagreements(){
-  const byCoder = {};
-  for(const coder of CODERS){
-    byCoder[coder] = await loadCoderResponses(coder);
-  }
-  const bySegment = {};
-  CODERS.forEach(coder=>{
-    Object.keys(byCoder[coder]).forEach(segId=>{
-      const r = byCoder[coder][segId];
-      if(!r.complete) return;
-      if(!bySegment[segId]) bySegment[segId] = [];
-      bySegment[segId].push({ coder, r });
-    });
-  });
-  const allCodes = [];
-  CODEBOOK.forEach(s => s.items.forEach(it => allCodes.push(it.code)));
-
-  const results = [];
-  Object.keys(bySegment).forEach(segId=>{
-    const entries = bySegment[segId];
-    if(entries.length < 2) return;
-    const disagreedCodes = allCodes.filter(code=>{
-      const vals = entries.map(e => !!(e.r.answers && e.r.answers[code]));
-      return !vals.every(v => v === vals[0]);
-    });
-    if(disagreedCodes.length === 0) return;
-    const seg = STATE.segments.find(s=>s.segmentId===segId);
-    results.push({
-      segmentId: segId,
-      commentId: seg ? seg.commentId : '(unknown — segment data not loaded)',
-      text: seg ? seg.text : '(segment text unavailable)',
-      coders: entries.map(e=>e.coder),
-      disagreedCodes,
-      memos: entries.filter(e=>e.r.memo).map(e=>({coder:e.coder, memo:e.r.memo}))
-    });
-  });
-  results.sort((a,b)=> b.disagreedCodes.length - a.disagreedCodes.length);
-  return results;
+  document.getElementById('consensusBtn').onclick = ()=>{ STATE.view='consensus'; render(); };
 }
 
 async function computeProgress(){
@@ -1342,31 +1259,6 @@ async function computeProgress(){
   return progress;
 }
 
-async function computeFlagged(){
-  const resRaw = await safeGet('osha:resolutions');
-  const resolutions = resRaw ? JSON.parse(resRaw) : {};
-  const bySegment = {};
-  for(const coder of CODERS){
-    const responses = await loadCoderResponses(coder);
-    Object.keys(responses).forEach(segId=>{
-      const r = responses[segId];
-      if(!r.complete || !r.flagged) return;
-      if(!bySegment[segId]) bySegment[segId] = [];
-      bySegment[segId].push({ coder, rationale: r.rationale, confidence: r.confidence, confidenceExplain: r.confidenceExplain });
-    });
-  }
-  return Object.keys(bySegment).map(segId=>{
-    const seg = STATE.segments.find(s=>s.segmentId===segId);
-    return {
-      segmentId: segId,
-      commentId: seg ? seg.commentId : '(unknown — segment data not loaded)',
-      text: seg ? seg.text : '(segment text unavailable — reload segment data)',
-      flags: bySegment[segId],
-      existingResolution: resolutions[segId] ? resolutions[segId].note : ''
-    };
-  });
-}
-
 async function buildExportRows(){
   const allCols = [];
   CODEBOOK.forEach(s => s.items.forEach(it => allCols.push(it.code)));
@@ -1375,8 +1267,11 @@ async function buildExportRows(){
     s.items.forEach(it => { if(it.hasText) textCols.push(it.code+'_specify'); });
     if(s.sectionText) textCols.push(s.sectionText.code);
   });
-  const resRaw = await safeGet('osha:resolutions');
-  const resolutions = resRaw ? JSON.parse(resRaw) : {};
+  const legacyRes = await loadLegacyResolutions();
+  const consRecs = await loadConsensusRecords();
+  const resolutions = {};
+  Object.keys(legacyRes).forEach(k => { resolutions[k] = { note: legacyRes[k].note }; });
+  Object.keys(consRecs).forEach(k => { if(consRecs[k].decision) resolutions[k] = { note: consRecs[k].decision }; });
   const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols);
   const rows = [header];
   for(const coder of CODERS){
@@ -1392,6 +1287,305 @@ async function buildExportRows(){
     });
   }
   return rows;
+}
+
+/* =========================================================
+   CONSENSUS REVIEW
+   One screen for the team meeting: every flagged segment and every segment
+   where coders disagree, each shown once, with all coder answers side by side
+   (grouped by codebook section), memos/rationales, and a place to record the
+   team's final decision + discussion notes — stored SEPARATELY from the coders'
+   original responses, one small row per segment (osha:consensus:<segmentId>).
+   ========================================================= */
+const CONSENSUS_PREFIX = 'osha:consensus:';
+let CONS = { rows:[], records:{}, legacy:{}, coders:[] };
+
+async function loadConsensusRecords(){
+  const entries = await safeGetPrefix(CONSENSUS_PREFIX);
+  const out = {};
+  Object.keys(entries).forEach(k=>{
+    try{ out[k.slice(CONSENSUS_PREFIX.length)] = JSON.parse(entries[k]); }catch(e){ /* skip a corrupt row */ }
+  });
+  return out;
+}
+
+// Older versions saved one shared blob of "decisions" under osha:resolutions.
+// Still read it (never write to it) so nothing already typed there is lost.
+async function loadLegacyResolutions(){
+  const raw = await safeGet('osha:resolutions');
+  if(!raw) return {};
+  try{ return JSON.parse(raw); }catch(e){ return {}; }
+}
+
+// One rule for every field (gates and items alike):
+//   green = every coder on this segment said Yes
+//   red   = coders differ (someone said Yes, someone didn't)
+//   gray  = nobody said Yes
+function fieldStatus(yesFlags){
+  const yes = yesFlags.filter(Boolean).length;
+  if(yes === 0) return 'none';
+  return yes === yesFlags.length ? 'agree' : 'disagree';
+}
+
+async function buildConsensusRows(){
+  const byCoder = {};
+  for(const c of CODERS) byCoder[c] = await loadCoderResponses(c);
+  const segIds = new Set();
+  CODERS.forEach(c => Object.keys(byCoder[c]).forEach(id => { if(byCoder[c][id].complete) segIds.add(id); }));
+
+  const rows = [];
+  segIds.forEach(segId=>{
+    const entries = CODERS
+      .filter(c => byCoder[c][segId] && byCoder[c][segId].complete)
+      .map(c => ({ coder:c, r:byCoder[c][segId] }));
+    const notYetCoded = CODERS.filter(c =>
+      STATE.assignment[c] && STATE.assignment[c].order.indexOf(segId) !== -1 &&
+      !(byCoder[c][segId] && byCoder[c][segId].complete));
+    const flaggers = entries.filter(e => e.r.flagged);
+
+    let total = 0;
+    const sections = CODEBOOK.map(sec=>{
+      const gateVals = entries.map(e => e.r.answers ? e.r.answers[sec.id] : undefined);
+      const gateStatus = fieldStatus(gateVals.map(v => v === true));
+      const items = sec.items.map(it=>{
+        const cells = entries.map(e=>{
+          const gateYes = !!(e.r.answers && e.r.answers[sec.id] === true);
+          const yes = !!(e.r.answers && e.r.answers[it.code] === true);
+          return { coder:e.coder, val: yes ? 'yes' : (gateYes ? 'no' : 'na'),
+                   text: (it.hasText && e.r.texts && e.r.texts[it.code]) ? e.r.texts[it.code] : '' };
+        });
+        return { item:it, cells, status: fieldStatus(cells.map(c => c.val === 'yes')) };
+      });
+      const sectionText = sec.sectionText ? entries.map(e => ({
+        coder:e.coder, text: (e.r.texts && e.r.texts[sec.sectionText.code]) || ''
+      })).filter(x => x.text) : [];
+      const dis = (gateStatus === 'disagree' ? 1 : 0) + items.filter(i => i.status === 'disagree').length;
+      total += dis;
+      const anyYes = gateVals.some(v => v === true);
+      return { sec, gateVals, gateStatus, items, sectionText, dis, anyYes };
+    });
+
+    // Section L (non-substantive check) — only matters if someone used it
+    const nsVals = entries.map(e => e.r.nonSubstantive || null);
+    const nsUsed = nsVals.some(Boolean);
+    const nsDisagree = nsUsed && !nsVals.every(v => v === nsVals[0]);
+    if(nsDisagree) total += 1;
+
+    if(flaggers.length === 0 && total === 0) return;   // nothing to discuss
+
+    const seg = STATE.segments.find(s => s.segmentId === segId);
+    rows.push({
+      segmentId: segId,
+      commentId: seg ? seg.commentId : (entries[0] && entries[0].r.commentId) || '(unknown)',
+      text: seg ? seg.text : '(segment text unavailable — reload segment data)',
+      order: seg ? STATE.segments.indexOf(seg) : 1e9,
+      entries, notYetCoded, flaggers, sections, totalDisagree: total,
+      nsUsed, nsVals, nsDisagree
+    });
+  });
+  rows.sort((a,b) => a.order - b.order);
+  return rows;
+}
+
+function firstName(n){ return n.split(' ')[0]; }
+function valLabel(v){ return v === 'yes' ? 'Yes' : v === 'no' ? 'No' : '—'; }
+
+function consFinalSelect(segId, key, rec){
+  const cur = rec && rec.final && key in rec.final ? (rec.final[key] ? 'yes' : 'no') : '';
+  return `<select data-final="${escapeHtml(key)}" aria-label="Team decision">
+    <option value=""${cur===''?' selected':''}>undecided</option>
+    <option value="yes"${cur==='yes'?' selected':''}>Yes</option>
+    <option value="no"${cur==='no'?' selected':''}>No</option>
+  </select>`;
+}
+
+function consSectionHtml(row, S, rec){
+  const sec = S.sec;
+  const head = `<tr><th>${sec.id} · ${escapeHtml(sec.title)}</th>${row.entries.map(e=>`<th title="${escapeHtml(e.coder)}">${escapeHtml(firstName(e.coder))}</th>`).join('')}<th>Team decision</th></tr>`;
+  const gateRow = `<tr class="gate-row c-${S.gateStatus}">
+      <th>Gate: ${escapeHtml(sec.gate)}</th>
+      ${S.gateVals.map(v => `<td>${v===true?'Yes':v===false?'No':'—'}</td>`).join('')}
+      <td class="final">${S.gateStatus==='disagree' ? consFinalSelect(row.segmentId, 'gate:'+sec.id, rec) : ''}</td>
+    </tr>`;
+  // Nobody said Yes to the gate and nobody disagrees: one compact line instead of a wall of gray.
+  if(!S.anyYes && S.dis === 0){
+    return `<table class="cons-table"><thead>${head}</thead><tbody>${gateRow}</tbody></table>`;
+  }
+  const itemRows = S.items.map(i => `<tr class="c-${i.status}">
+      <th>${escapeHtml(i.item.label)}</th>
+      ${i.cells.map(c => `<td>${valLabel(c.val)}${c.text ? ': “'+escapeHtml(c.text)+'”' : ''}</td>`).join('')}
+      <td class="final">${i.status==='disagree' ? consFinalSelect(row.segmentId, i.item.code, rec) : ''}</td>
+    </tr>`).join('');
+  const textRows = (S.sectionText.length && sec.sectionText)
+    ? `<tr><th>${escapeHtml(sec.sectionText.label)}</th><td colspan="${row.entries.length+1}">${S.sectionText.map(x=>`<strong>${escapeHtml(firstName(x.coder))}:</strong> ${escapeHtml(x.text)}`).join(' &nbsp;·&nbsp; ')}</td></tr>`
+    : '';
+  return `<table class="cons-table"><thead>${head}</thead><tbody>${gateRow}${itemRows}${textRows}</tbody></table>`;
+}
+
+function consCardHtml(row){
+  const rec = CONS.records[row.segmentId] || null;
+  const legacyNote = (!rec && CONS.legacy[row.segmentId]) ? (CONS.legacy[row.segmentId].note || '') : '';
+  const status = rec && rec.status === 'resolved' ? 'resolved' : 'open';
+
+  const why = [];
+  if(row.flaggers.length) why.push(`<span class="cons-tag flag">Flagged by ${row.flaggers.map(f=>escapeHtml(firstName(f.coder))).join(', ')}</span>`);
+  if(row.totalDisagree) why.push(`<span class="cons-tag dis">${row.totalDisagree} field${row.totalDisagree===1?'':'s'} in disagreement</span>`);
+  if(row.entries.length < 2) why.push(`<span class="cons-tag">Only 1 coder finished so far</span>`);
+
+  const memoBlocks = row.entries.filter(e => e.r.memo || (e.r.flagged && (e.r.rationale || e.r.confidenceExplain)) || e.r.nonSubstantive)
+    .map(e=>{
+      const parts = [];
+      if(e.r.flagged){
+        parts.push(`<em>Flag rationale${e.r.confidence?' (confidence '+e.r.confidence+'/5)':''}:</em> ${escapeHtml(e.r.rationale || e.r.confidenceExplain || 'no text given')}`);
+      }
+      if(e.r.memo) parts.push(`<em>Memo:</em> ${escapeHtml(e.r.memo)}`);
+      if(e.r.nonSubstantive) parts.push(`<em>Non-substantive check:</em> ${escapeHtml(e.r.nonSubstantive)}`);
+      return `<div class="cons-note"><strong>${escapeHtml(e.coder)}</strong><br>${parts.join('<br>')}</div>`;
+    }).join('');
+
+  const nsRow = row.nsUsed ? `<p class="small chrome" style="background:${row.nsDisagree?'var(--disagree-bg)':'var(--agree-bg)'};padding:4px 8px;">Non-substantive check (Section L): ${row.entries.map((e,i)=>escapeHtml(firstName(e.coder))+' — '+(row.nsVals[i]||'not used')).join(' · ')}</p>` : '';
+
+  const missing = row.notYetCoded.length
+    ? `<p class="small chrome" style="color:var(--flag);">Assigned but not coded: ${row.notYetCoded.map(escapeHtml).join(', ')}</p>` : '';
+
+  return `
+  <div class="card cons-card" data-seg="${escapeHtml(row.segmentId)}" data-status="${status}" data-flagged="${row.flaggers.length?1:0}" data-disagree="${row.totalDisagree?1:0}">
+    <div class="small chrome"><strong>${escapeHtml(row.commentId)} · ${escapeHtml(row.segmentId)}</strong> ${why.join('')}
+      <span class="cons-tag ${status==='resolved'?'ok':''}" data-status-tag>${status==='resolved'?'Resolved':'Open'}</span></div>
+    <div class="segment-text" style="font-size:1.02rem;">${escapeHtml(row.text)}</div>
+    <p class="small chrome">Coded by: ${row.entries.map(e=>escapeHtml(e.coder)).join(', ')}</p>
+    ${missing}
+    ${memoBlocks}
+    ${nsRow}
+    ${row.sections.map(S => consSectionHtml(row, S, rec)).join('')}
+    <hr class="divider">
+    <div class="chrome">
+      <div class="field"><label>Final decision (what the team agreed, and why)</label>
+        <textarea data-f="decision">${escapeHtml((rec && rec.decision) || legacyNote)}</textarea>
+        ${legacyNote ? '<div class="small">Pre-filled from an earlier saved decision — saving here moves it to the new record.</div>' : ''}</div>
+      <div class="field"><label>Discussion notes</label>
+        <textarea data-f="discussion">${escapeHtml((rec && rec.discussion) || '')}</textarea></div>
+      <div class="btnrow">
+        <label class="small">Status
+          <select data-f="status"><option value="open"${status==='open'?' selected':''}>Open</option><option value="resolved"${status==='resolved'?' selected':''}>Resolved</option></select></label>
+        <label class="small">Recorded by
+          <select data-f="by"><option value="">—</option>${CODERS.map(c=>`<option${rec&&rec.recordedBy===c?' selected':''}>${escapeHtml(c)}</option>`).join('')}</select></label>
+        <button class="primary" data-cons-save>Save</button>
+        <span class="small" data-cons-msg>${rec && rec.savedAt ? 'Last saved '+new Date(rec.savedAt).toLocaleString() : ''}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function consUpdateSummary(){
+  const total = CONS.rows.length;
+  const resolved = CONS.rows.filter(r => CONS.records[r.segmentId] && CONS.records[r.segmentId].status === 'resolved').length;
+  const el = document.getElementById('consSummary');
+  if(el) el.textContent = `${total} segment(s) to review · ${resolved} resolved · ${total-resolved} open`;
+}
+
+function consApplyFilter(f){
+  document.querySelectorAll('.cons-card').forEach(card=>{
+    let show = true;
+    if(f === 'open') show = card.dataset.status === 'open';
+    if(f === 'resolved') show = card.dataset.status === 'resolved';
+    if(f === 'flagged') show = card.dataset.flagged === '1';
+    if(f === 'disagree') show = card.dataset.disagree === '1';
+    card.style.display = show ? '' : 'none';
+  });
+  document.querySelectorAll('[data-cons-filter]').forEach(b => b.classList.toggle('primary', b.dataset.consFilter === f));
+}
+
+function consensusCsv(){
+  const codes = [];
+  CODEBOOK.forEach(s => { codes.push('gate:'+s.id); s.items.forEach(it => codes.push(it.code)); });
+  const header = ['segmentId','commentId','status','final_decision','discussion_notes','recorded_by','saved_at'].concat(codes.map(c => 'final_'+c.replace(':','_')));
+  const out = [header];
+  CONS.rows.forEach(r=>{
+    const rec = CONS.records[r.segmentId];
+    if(!rec) return;
+    out.push([r.segmentId, r.commentId, rec.status||'', rec.decision||'', rec.discussion||'', rec.recordedBy||'', rec.savedAt||'']
+      .concat(codes.map(c => rec.final && c in rec.final ? (rec.final[c] ? 1 : 0) : '')));
+  });
+  return rowsToCsv(out);
+}
+
+async function renderConsensus(){
+  app.innerHTML = `${topbar('Consensus review')}<div class="card chrome"><p class="small">Loading every coder's responses from the sheet…</p></div>`;
+  CONS.records = await loadConsensusRecords();
+  CONS.legacy = await loadLegacyResolutions();
+  CONS.rows = await buildConsensusRows();
+
+  app.innerHTML = `
+    ${topbar('Consensus review')}
+    <div class="card chrome">
+      <p id="consSummary" style="margin:0 0 8px;"></p>
+      <p class="cons-legend small" style="margin:0 0 10px;">
+        <span style="background:var(--agree-bg)">Green: everyone said Yes</span>
+        <span style="background:var(--disagree-bg)">Red: coders differ</span>
+        <span style="background:var(--none-bg)">Gray: nobody said Yes</span>
+        <span>“—” = coder's gate was No, so this item wasn't asked</span></p>
+      <div class="btnrow">
+        <button data-cons-filter="all" class="primary">All</button>
+        <button data-cons-filter="open">Open</button>
+        <button data-cons-filter="resolved">Resolved</button>
+        <button data-cons-filter="flagged">Flagged</button>
+        <button data-cons-filter="disagree">Disagreements</button>
+        <button id="consCsvBtn">Download team decisions (CSV)</button>
+        <button id="consReload">Reload from sheet</button>
+      </div>
+      <label class="small" style="display:block;margin-top:8px;"><input type="checkbox" id="consHideGray"> Hide gray rows (fields nobody said Yes to) to shorten each segment</label>
+      <div id="consCsvArea"></div>
+    </div>
+    ${CONS.rows.length ? CONS.rows.map(consCardHtml).join('') : '<div class="card chrome"><p>Nothing to review yet — no segment is flagged or has a disagreement between completed coders.</p></div>'}
+    <footer class="foot"><a id="consBack">Back to Admin</a></footer>
+  `;
+  consUpdateSummary();
+  document.getElementById('consBack').onclick = ()=>{ STATE.view='admin'; render(); };
+  document.getElementById('consReload').onclick = ()=>{ if(confirm('Reload from the sheet? Any unsaved typing on this screen will be lost.')) renderConsensus(); };
+  document.querySelectorAll('[data-cons-filter]').forEach(b => b.onclick = ()=> consApplyFilter(b.dataset.consFilter));
+  document.getElementById('consHideGray').onchange = (ev)=>{ app.classList.toggle('cons-hide-gray', ev.target.checked); };
+  document.getElementById('consCsvBtn').onclick = ()=>{
+    const url = URL.createObjectURL(new Blob([consensusCsv()], {type:'text/csv'}));
+    document.getElementById('consCsvArea').innerHTML = `<a href="${url}" download="osha_consensus_decisions.csv">Download CSV</a>`;
+  };
+
+  document.querySelectorAll('.cons-card').forEach(card=>{
+    const segId = card.dataset.seg;
+    const btn = card.querySelector('[data-cons-save]');
+    const msg = card.querySelector('[data-cons-msg]');
+    btn.onclick = async ()=>{
+      const final = {};
+      card.querySelectorAll('select[data-final]').forEach(sel=>{
+        if(sel.value === 'yes') final[sel.dataset.final] = true;
+        else if(sel.value === 'no') final[sel.dataset.final] = false;
+      });
+      const undecided = card.querySelectorAll('select[data-final]').length - Object.keys(final).length;
+      const rec = {
+        status: card.querySelector('[data-f="status"]').value,
+        decision: card.querySelector('[data-f="decision"]').value,
+        discussion: card.querySelector('[data-f="discussion"]').value,
+        recordedBy: card.querySelector('[data-f="by"]').value,
+        final, savedAt: new Date().toISOString()
+      };
+      btn.disabled = true; msg.style.color = ''; msg.textContent = 'Saving…';
+      const ok = await safeSet(CONSENSUS_PREFIX + segId, JSON.stringify(rec));
+      btn.disabled = false;
+      if(!ok){
+        msg.style.color = 'var(--flag)';
+        msg.textContent = 'NOT saved — check your connection and click Save again. Your text is still on screen.';
+        return;
+      }
+      CONS.records[segId] = rec;
+      card.dataset.status = rec.status;
+      const tag = card.querySelector('[data-status-tag]');
+      tag.textContent = rec.status === 'resolved' ? 'Resolved' : 'Open';
+      tag.classList.toggle('ok', rec.status === 'resolved');
+      msg.textContent = 'Saved ' + new Date(rec.savedAt).toLocaleTimeString() +
+        (rec.status === 'resolved' && undecided ? ` — note: ${undecided} red field(s) still have no team decision.` : '');
+      consUpdateSummary();
+    };
+  });
 }
 
 function rowsToCsv(rows){
