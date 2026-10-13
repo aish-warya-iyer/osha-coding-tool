@@ -422,6 +422,17 @@ async function safeList(prefix){
     return (data && data.keys) ? data.keys : [];
   }catch(e){ console.error('safeList failed', e); return []; }
 }
+// Returns { fullKey: value } for every row whose key starts with `prefix`, in one round trip.
+// Requires the updated Apps Script backend (action=getPrefix) — falls back to {} on an old
+// deployment that doesn't recognize the action yet, which callers handle gracefully.
+async function safeGetPrefix(prefix){
+  if(!backendConfigured()) return {};
+  try{
+    const res = await fetch(APPS_SCRIPT_URL + '?action=getPrefix&prefix=' + encodeURIComponent(prefix||''));
+    const data = await res.json();
+    return (data && data.entries) ? data.entries : {};
+  }catch(e){ console.error('safeGetPrefix failed', e); return {}; }
+}
 async function safeDelete(key){
   if(!backendConfigured()) return false;
   try{
@@ -527,8 +538,7 @@ function renderSelect(){
   `;
   async function loadCoderData(val){
     STATE.coder = val;
-    const respRaw = await safeGet('osha:responses:'+val);
-    STATE.responses = respRaw ? JSON.parse(respRaw) : {};
+    STATE.responses = await loadCoderResponses(val);
   }
   document.getElementById('startBtn').onclick = async ()=>{
     const val = document.getElementById('coderSelect').value;
@@ -626,12 +636,46 @@ function draftKey(){ return 'osha:draft:'+STATE.coder; }
 async function saveDraft(){
   // While reviewing an already-completed segment, never touch the shared draft slot —
   // it may belong to a different, still-in-progress segment and must not be clobbered.
-  if(STATE.reviewMode) return;
+  if(STATE.reviewMode) return true;
   const draft = { segmentId: STATE.currentSegmentId, sectionIndex: STATE.sectionIndex, sectionState: STATE.sectionState };
-  await safeSet(draftKey(), JSON.stringify(draft));
+  return await safeSet(draftKey(), JSON.stringify(draft));
 }
 async function clearDraft(){
   await safeDelete(draftKey());
+}
+
+function responseKeyPrefix(coder){ return 'osha:responses:'+coder+'::'; }
+
+/* Loads a coder's completed-segment records.
+   Each segment is stored under its OWN key (osha:responses:<coder>::<segmentId>)
+   instead of one giant JSON blob per coder — a single Google Sheets cell is capped
+   at 50,000 characters, and a coder with ~50-70 completed segments in one blob can
+   silently sail past that limit, so every save after that point fails quietly while
+   the UI still says "saved." Splitting into one small row per segment removes that
+   ceiling entirely.
+   For anyone who already has data under the old single-blob key (osha:responses:<coder>),
+   this transparently migrates it the first time it's loaded: copies any segment not
+   already present under the new per-segment keys, without deleting the old blob. */
+async function loadCoderResponses(coder){
+  const prefix = responseKeyPrefix(coder);
+  const entries = await safeGetPrefix(prefix);
+  const responses = {};
+  Object.keys(entries).forEach(fullKey=>{
+    const segId = fullKey.slice(prefix.length);
+    try{ responses[segId] = JSON.parse(entries[fullKey]); }catch(e){ /* skip a corrupt row */ }
+  });
+
+  const legacyRaw = await safeGet('osha:responses:'+coder);
+  if(legacyRaw){
+    let legacy = {};
+    try{ legacy = JSON.parse(legacyRaw); }catch(e){ legacy = {}; }
+    const missing = Object.keys(legacy).filter(segId => !(segId in responses));
+    for(const segId of missing){
+      responses[segId] = legacy[segId];
+      await safeSet(prefix+segId, JSON.stringify(legacy[segId]));
+    }
+  }
+  return responses;
 }
 
 async function beginSegment(segmentId){
@@ -909,9 +953,16 @@ function renderCode(){
   }
   if(document.getElementById('saveProgressBtn')){
     document.getElementById('saveProgressBtn').onclick = async ()=>{
-      document.getElementById('saveProgressMsg').textContent = 'Saving…';
-      await saveDraft();
-      document.getElementById('saveProgressMsg').textContent = 'Progress saved — safe to close this tab and come back later.';
+      const msgEl = document.getElementById('saveProgressMsg');
+      msgEl.style.color = '';
+      msgEl.textContent = 'Saving…';
+      const ok = await saveDraft();
+      if(ok){
+        msgEl.textContent = 'Progress saved — safe to close this tab and come back later.';
+      } else {
+        msgEl.style.color = 'var(--flag)';
+        msgEl.textContent = 'Save failed — check your internet connection and try again. Nothing has been lost on this screen, but it is not saved to the shared sheet yet.';
+      }
     };
   }
   if(document.getElementById('exitReviewBtn')){
@@ -990,6 +1041,7 @@ function renderSummary(){
         <button class="primary" id="saveBtn" ${conf?'':'disabled'}>${STATE.reviewMode ? 'Save correction' : 'Save & next segment'}</button>
       </div>
       ${conf ? '' : '<p class="small chrome">Select a confidence rating above to save.</p>'}
+      <div id="saveSegmentError"></div>
     </div>
   `;
   document.querySelectorAll('[data-conf]').forEach(el=>{
@@ -1010,7 +1062,18 @@ function renderSummary(){
       if(document.getElementById('rationaleBox')) STATE.sectionState.rationale = document.getElementById('rationaleBox').value;
       if(document.getElementById('confExplainBox')) STATE.sectionState.confidenceExplain = document.getElementById('confExplainBox').value;
       STATE.sectionState.memo = document.getElementById('memoBox').value;
-      await saveCurrentSegment();
+      const origLabel = saveBtn.textContent;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      const ok = await saveCurrentSegment();
+      if(!ok){
+        saveBtn.disabled = false;
+        saveBtn.textContent = origLabel;
+        document.getElementById('saveSegmentError').innerHTML =
+          '<p class="small" style="color:var(--flag);">Save failed — this segment has NOT been recorded yet. Check your internet connection and click save again before leaving this screen.</p>';
+        return;
+      }
+      document.getElementById('saveSegmentError').innerHTML = '';
       if(STATE.reviewMode){
         // Reviewing a finished segment never touched the shared draft slot, so there's
         // nothing to clear here — clearing it would risk wiping a different, still
@@ -1045,7 +1108,10 @@ async function saveCurrentSegment(){
     codedAt: new Date().toISOString()
   };
   STATE.responses[seg.segmentId] = record;
-  await safeSet('osha:responses:'+STATE.coder, JSON.stringify(STATE.responses));
+  // One small row per segment (not one growing blob per coder) — see loadCoderResponses
+  // for why. Returns true/false so callers can tell the person when a save didn't land,
+  // instead of silently claiming success.
+  return await safeSet(responseKeyPrefix(STATE.coder)+seg.segmentId, JSON.stringify(record));
 }
 
 function escapeHtml(s){
@@ -1228,8 +1294,7 @@ function renderAdmin(){
 async function computeDisagreements(){
   const byCoder = {};
   for(const coder of CODERS){
-    const raw = await safeGet('osha:responses:'+coder);
-    byCoder[coder] = raw ? JSON.parse(raw) : {};
+    byCoder[coder] = await loadCoderResponses(coder);
   }
   const bySegment = {};
   CODERS.forEach(coder=>{
@@ -1270,8 +1335,7 @@ async function computeProgress(){
   const progress = {};
   for(const coder of CODERS){
     const assigned = (STATE.assignment[coder] && STATE.assignment[coder].order.length) || 0;
-    const raw = await safeGet('osha:responses:'+coder);
-    const responses = raw ? JSON.parse(raw) : {};
+    const responses = await loadCoderResponses(coder);
     const completed = Object.values(responses).filter(r => r.complete).length;
     progress[coder] = { assigned, completed };
   }
@@ -1283,8 +1347,7 @@ async function computeFlagged(){
   const resolutions = resRaw ? JSON.parse(resRaw) : {};
   const bySegment = {};
   for(const coder of CODERS){
-    const raw = await safeGet('osha:responses:'+coder);
-    const responses = raw ? JSON.parse(raw) : {};
+    const responses = await loadCoderResponses(coder);
     Object.keys(responses).forEach(segId=>{
       const r = responses[segId];
       if(!r.complete || !r.flagged) return;
@@ -1317,9 +1380,7 @@ async function buildExportRows(){
   const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols);
   const rows = [header];
   for(const coder of CODERS){
-    const raw = await safeGet('osha:responses:'+coder);
-    if(!raw) continue;
-    const responses = JSON.parse(raw);
+    const responses = await loadCoderResponses(coder);
     Object.keys(responses).forEach(segmentId=>{
       const r = responses[segmentId];
       if(!r.complete) return;
