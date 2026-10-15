@@ -412,13 +412,18 @@ function backendConfigured(){
   return APPS_SCRIPT_URL && APPS_SCRIPT_URL.indexOf('PASTE_YOUR') === -1;
 }
 
+// Counts reads that FAILED (network error, blocked request, old backend). Without this, a failed
+// read looks identical to "no data yet", and an export/review screen would quietly come up empty.
+let BACKEND_READ_ERRORS = 0;
+
 async function safeGet(key){
   if(!backendConfigured()) return null;
   try{
     const res = await fetch(APPS_SCRIPT_URL + '?action=get&key=' + encodeURIComponent(key));
     const data = await res.json();
+    if(data && data.error){ BACKEND_READ_ERRORS++; return null; }
     return (data && data.value != null) ? data.value : null;
-  }catch(e){ console.error('safeGet failed', e); return null; }
+  }catch(e){ BACKEND_READ_ERRORS++; console.error('safeGet failed', e); return null; }
 }
 async function safeSet(key, value){
   if(!backendConfigured()) return false;
@@ -450,8 +455,14 @@ async function safeGetPrefix(prefix){
   try{
     const res = await fetch(APPS_SCRIPT_URL + '?action=getPrefix&prefix=' + encodeURIComponent(prefix||''));
     const data = await res.json();
-    return (data && data.entries) ? data.entries : {};
-  }catch(e){ console.error('safeGetPrefix failed', e); return {}; }
+    // An old backend (without the getPrefix action) answers {error:'unknown action'}.
+    if(!data || data.error || !data.entries){ BACKEND_READ_ERRORS++; return {}; }
+    return data.entries;
+  }catch(e){ BACKEND_READ_ERRORS++; console.error('safeGetPrefix failed', e); return {}; }
+}
+
+function backendReadWarning(){
+  return `<div class="warn chrome" style="margin-bottom:12px;color:var(--flag);"><strong>Could not read everything from the sheet (${BACKEND_READ_ERRORS} request(s) failed).</strong> What you see below may be incomplete or empty even though data exists. Check your internet connection, make sure the Apps Script backend has been redeployed with the latest version, hard refresh (Ctrl/Cmd + Shift + R) and try again.</div>`;
 }
 async function safeDelete(key){
   if(!backendConfigured()) return false;
@@ -1222,14 +1233,22 @@ function renderAdmin(){
     }
   };
   document.getElementById('exportBtn').onclick = async ()=>{
+    document.getElementById('exportArea').innerHTML = `<p class="small chrome">Loading from the sheet…</p>`;
+    BACKEND_READ_ERRORS = 0;
     const rows = await buildExportRows();
+    const dataRows = rows.length - 1;   // first row is the header
+    if(BACKEND_READ_ERRORS > 0){
+      // Don't offer a file that might silently be empty or partial.
+      document.getElementById('exportArea').innerHTML = backendReadWarning();
+      return;
+    }
     const csv = rowsToCsv(rows);
     const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
-    document.getElementById('exportArea').innerHTML = `
-      <p class="small chrome">${rows.length} coded segment record(s) found across all coders.</p>
-      <a class="chrome" href="${url}" download="osha_pilot_coding_export.csv">Download CSV</a>
-    `;
+    document.getElementById('exportArea').innerHTML = dataRows > 0
+      ? `<p class="small chrome">${dataRows} coded segment record(s) found across all coders.</p>
+         <a class="chrome" href="${url}" download="osha_pilot_coding_export.csv">Download CSV</a>`
+      : `<p class="small chrome" style="color:var(--flag);">The sheet answered, but no completed segments were found. If coders have finished segments, tell Aish before relying on this.</p>`;
   };
   document.getElementById('progressBtn').onclick = async ()=>{
     document.getElementById('progressArea').innerHTML = `<p class="small chrome">Loading…</p>`;
@@ -1449,7 +1468,7 @@ function consCardHtml(row){
     ? `<p class="small chrome" style="color:var(--flag);">Assigned but not coded: ${row.notYetCoded.map(escapeHtml).join(', ')}</p>` : '';
 
   return `
-  <div class="card cons-card" data-seg="${escapeHtml(row.segmentId)}" data-status="${status}" data-flagged="${row.flaggers.length?1:0}" data-disagree="${row.totalDisagree?1:0}">
+  <div class="card cons-card" data-seg="${escapeHtml(row.segmentId)}" data-status="${status}" data-flagged="${row.flaggers.length?1:0}" data-disagree="${row.totalDisagree?1:0}" data-complete="${row.notYetCoded.length===0?1:0}">
     <div class="small chrome"><strong>${escapeHtml(row.commentId)} · ${escapeHtml(row.segmentId)}</strong> ${why.join('')}
       <span class="cons-tag ${status==='resolved'?'ok':''}" data-status-tag>${status==='resolved'?'Resolved':'Open'}</span></div>
     <div class="segment-text" style="font-size:1.02rem;">${escapeHtml(row.text)}</div>
@@ -1491,6 +1510,7 @@ function consApplyFilter(f){
     if(f === 'resolved') show = card.dataset.status === 'resolved';
     if(f === 'flagged') show = card.dataset.flagged === '1';
     if(f === 'disagree') show = card.dataset.disagree === '1';
+    if(f === 'complete') show = card.dataset.complete === '1';
     card.style.display = show ? '' : 'none';
   });
   document.querySelectorAll('[data-cons-filter]').forEach(b => b.classList.toggle('primary', b.dataset.consFilter === f));
@@ -1499,12 +1519,21 @@ function consApplyFilter(f){
 function consensusCsv(){
   const codes = [];
   CODEBOOK.forEach(s => { codes.push('gate:'+s.id); s.items.forEach(it => codes.push(it.code)); });
-  const header = ['segmentId','commentId','status','final_decision','discussion_notes','recorded_by','saved_at'].concat(codes.map(c => 'final_'+c.replace(':','_')));
+  const header = ['segmentId','commentId','why_included','fields_in_disagreement','status','final_decision','discussion_notes','recorded_by','saved_at']
+    .concat(codes.map(c => 'final_'+c.replace(':','_')));
   const out = [header];
   CONS.rows.forEach(r=>{
-    const rec = CONS.records[r.segmentId];
-    if(!rec) return;
-    out.push([r.segmentId, r.commentId, rec.status||'', rec.decision||'', rec.discussion||'', rec.recordedBy||'', rec.savedAt||'']
+    const rec = CONS.records[r.segmentId] || {};
+    const why = [];
+    if(r.flaggers.length) why.push('flagged by ' + r.flaggers.map(f=>f.coder).join(' + '));
+    if(r.totalDisagree) why.push(r.totalDisagree + ' field(s) in disagreement');
+    const disCodes = [];
+    r.sections.forEach(S => {
+      if(S.gateStatus === 'disagree') disCodes.push('gate:'+S.sec.id);
+      S.items.forEach(i => { if(i.status === 'disagree') disCodes.push(i.item.code); });
+    });
+    out.push([r.segmentId, r.commentId, why.join('; '), disCodes.join(' '), rec.status || 'open',
+              rec.decision||'', rec.discussion||'', rec.recordedBy||'', rec.savedAt||'']
       .concat(codes.map(c => rec.final && c in rec.final ? (rec.final[c] ? 1 : 0) : '')));
   });
   return rowsToCsv(out);
@@ -1512,12 +1541,14 @@ function consensusCsv(){
 
 async function renderConsensus(){
   app.innerHTML = `${topbar('Consensus review')}<div class="card chrome"><p class="small">Loading every coder's responses from the sheet…</p></div>`;
+  BACKEND_READ_ERRORS = 0;
   CONS.records = await loadConsensusRecords();
   CONS.legacy = await loadLegacyResolutions();
   CONS.rows = await buildConsensusRows();
 
   app.innerHTML = `
     ${topbar('Consensus review')}
+    ${BACKEND_READ_ERRORS > 0 ? backendReadWarning() : ''}
     <div class="card chrome">
       <p id="consSummary" style="margin:0 0 8px;"></p>
       <p class="cons-legend small" style="margin:0 0 10px;">
@@ -1531,10 +1562,11 @@ async function renderConsensus(){
         <button data-cons-filter="resolved">Resolved</button>
         <button data-cons-filter="flagged">Flagged</button>
         <button data-cons-filter="disagree">Disagreements</button>
-        <button id="consCsvBtn">Download team decisions (CSV)</button>
+        <button data-cons-filter="complete">All assigned coders finished</button>
+        <button id="consCsvBtn">Download review list + team decisions (CSV)</button>
         <button id="consReload">Reload from sheet</button>
       </div>
-      <label class="small" style="display:block;margin-top:8px;"><input type="checkbox" id="consHideGray"> Hide gray rows (fields nobody said Yes to) to shorten each segment</label>
+      <label class="small" style="display:block;margin-top:8px;"><input type="checkbox" id="consHideGray"> Hide gray rows (fields nobody said Yes to) to shorten each segment. This only changes what you see on screen; it does not change any data or the download.</label>
       <div id="consCsvArea"></div>
     </div>
     ${CONS.rows.length ? CONS.rows.map(consCardHtml).join('') : '<div class="card chrome"><p>Nothing to review yet — no segment is flagged or has a disagreement between completed coders.</p></div>'}
@@ -1547,7 +1579,11 @@ async function renderConsensus(){
   document.getElementById('consHideGray').onchange = (ev)=>{ app.classList.toggle('cons-hide-gray', ev.target.checked); };
   document.getElementById('consCsvBtn').onclick = ()=>{
     const url = URL.createObjectURL(new Blob([consensusCsv()], {type:'text/csv'}));
-    document.getElementById('consCsvArea').innerHTML = `<a href="${url}" download="osha_consensus_decisions.csv">Download CSV</a>`;
+    const a = document.createElement('a');
+    a.href = url; a.download = 'osha_consensus_review.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    const decided = CONS.rows.filter(r => CONS.records[r.segmentId]).length;
+    document.getElementById('consCsvArea').innerHTML = `<p class="small">Downloaded ${CONS.rows.length} segment(s) — ${decided} with a saved team decision, ${CONS.rows.length - decided} not decided yet. (If nothing arrived, check your browser's downloads.)</p>`;
   };
 
   document.querySelectorAll('.cons-card').forEach(card=>{
