@@ -315,15 +315,11 @@ const CODEBOOK = [
       {code:'backfires_on_workers', label:'Backfires on workers', q:'Does this segment argue the rule would harm the very workers it is meant to protect?'},
       {code:'redundant_already_done', label:'Redundant/already done', q:'Does this segment argue the rule is unnecessary because employers already voluntarily provide heat protections?'},
     ]},
-  { id:'F', title:'Evidence & legitimacy signals',
-    gate:"Does this segment support a claim with evidence, or ground the commenter's own authority/credibility in some basis?",
+  // DRAFT wording: Section F was split into F1 (ethos) and F2 (evidence) after the team adopted the F1 ethos gate.
+  // Gate wording below is drafted from the consensus notes and must be replaced by the exact Codebook v3.1 text.
+  { id:'F1', title:'Authority / ethos (F1)',
+    gate:"Does this segment ground the commenter's own authority or credibility in some basis (who they are, who they speak for, their experience, expertise, or values) - even if the segment makes no claim?",
     items:[
-      {code:'own_experience', label:'Own experience (evidence)', q:"Does this segment support its claim with the commenter's own firsthand experience?"},
-      {code:'stats_studies', label:'Stats/studies', q:'Does this segment support its claim with data, statistics, or research findings?'},
-      {code:'laws_regs_cited', label:'Laws/regs cited', q:'Does this segment support its claim by citing a specific law/regulation (incl. a state ban/preemption)?'},
-      {code:'others_stories', label:"Others' stories", q:"Does this segment support its claim with someone else's story or case?"},
-      {code:'institutional_knowledge', label:'Institutional knowledge', q:'Does this segment support its claim with general industry/operational knowledge (no formal citation)?'},
-      {code:'no_evidence', label:'No evidence', q:'Does this segment make a claim with no evidence/citation/warrant at all?'},
       {code:'lived_experience', label:'Lived experience (authority)', q:"Does this segment ground the commenter's authority in their own firsthand experience?"},
       {code:'expertise', label:'Expertise', q:"Does this segment ground authority in the commenter's professional role/training/specialized knowledge?"},
       {code:'org_authority', label:'Org authority', q:'Does this segment ground authority in representing an organization/membership/official capacity?'},
@@ -332,6 +328,16 @@ const CODEBOOK = [
       {code:'moral_authority', label:'Moral authority', q:'Does this segment ground authority in ethical/moral standing rather than experience or role?'},
       {code:'solidarity_f', label:'Solidarity', q:'Does this segment ground authority in group membership/shared identity with those affected?'},
       {code:'heritage_tradition', label:'Heritage/tradition', q:'Does this segment ground authority/credibility in tradition, heritage, or a revered historical figure/quotation?'},
+    ]},
+  { id:'F2', title:'Evidence (F2)',
+    gate:"Does this segment make a claim and support it with evidence (or make a claim with none)?",
+    items:[
+      {code:'own_experience', label:'Own experience (evidence)', q:"Does this segment support its claim with the commenter's own firsthand experience?"},
+      {code:'stats_studies', label:'Stats/studies', q:'Does this segment support its claim with data, statistics, or research findings?'},
+      {code:'laws_regs_cited', label:'Laws/regs cited', q:'Does this segment support its claim by citing a specific law/regulation (incl. a state ban/preemption)?'},
+      {code:'others_stories', label:"Others' stories", q:"Does this segment support its claim with someone else's story or case?"},
+      {code:'institutional_knowledge', label:'Institutional knowledge', q:'Does this segment support its claim with general industry/operational knowledge (no formal citation)?'},
+      {code:'no_evidence', label:'No evidence', q:'Does this segment make a claim with no evidence/citation/warrant at all?'},
     ]},
   { id:'G', title:'Death imagery, named individuation',
     gate:'Does this segment mention death/fatality, or name a specific real person/incident for rhetorical effect?',
@@ -623,10 +629,25 @@ function renderMyList(){
     <div class="card chrome">
       <p class="small">Click any segment below to open it directly — including ones you've already finished, so you can double-check or correct an answer.</p>
       <div class="items-list">${rows || '<p class="small chrome">No segments assigned.</p>'}</div>
+      <hr class="divider">
+      <div class="field">
+        <label>Second-coder pass: code a segment that is not on your list (saved under your own name, never someone else's)</label>
+        <input type="text" id="extraSegId" placeholder="e.g. OSHA-2021-0009-25344-11"/>
+        <div class="btnrow" style="margin-top:6px;"><button type="button" id="extraSegBtn">Open this segment</button><span class="small" id="extraSegMsg"></span></div>
+      </div>
       <div class="btnrow" style="margin-top:12px;"><button class="ghost" id="back">Back</button></div>
     </div>
   `;
   document.getElementById('back').onclick = ()=>{ STATE.view='select'; render(); };
+  document.getElementById('extraSegBtn').onclick = async ()=>{
+    const id = document.getElementById('extraSegId').value.trim();
+    const msg = document.getElementById('extraSegMsg');
+    if(!STATE.segments.some(x => x.segmentId === id)){ msg.style.color = 'var(--flag)'; msg.textContent = 'No segment with that ID.'; return; }
+    const rec = STATE.responses[id];
+    if(rec && rec.complete){ await reviewCompletedSegment(id); return; }
+    STATE.reviewMode = false;
+    await beginSegment(id);
+  };
   document.querySelectorAll('[data-jump]').forEach(el=>{
     el.onclick = async ()=>{
       const id = el.getAttribute('data-jump');
@@ -671,8 +692,8 @@ function draftKey(){ return 'osha:draft:'+STATE.coder; }
 async function saveDraft(){
   // While reviewing an already-completed segment, never touch the shared draft slot —
   // it may belong to a different, still-in-progress segment and must not be clobbered.
-  if(STATE.reviewMode) return true;
-  const draft = { segmentId: STATE.currentSegmentId, sectionIndex: STATE.sectionIndex, sectionState: STATE.sectionState };
+  if(STATE.reviewMode || isOutsideAssignment()) return true;   // never overwrite the draft of an assigned segment
+  const draft = { segmentId: STATE.currentSegmentId, sectionIndex: STATE.sectionIndex, sectionState: STATE.sectionState, cbv: 2 };
   return await safeSet(draftKey(), JSON.stringify(draft));
 }
 async function clearDraft(){
@@ -726,6 +747,11 @@ async function beginSegment(segmentId){
       if(draft.segmentId === segmentId){
         STATE.sectionIndex = draft.sectionIndex;
         STATE.sectionState = draft.sectionState;
+        // Drafts saved before the F split count sections as A..K (F at index 5, G at 6...). Now F1+F2 occupy 5 and 6.
+        if(!draft.cbv){
+          if(STATE.sectionIndex >= 6) STATE.sectionIndex += 1;      // was past F: skip the new F2 slot
+          else if(STATE.sectionIndex === 5) STATE.sectionIndex = 5; // was in F: restart at F1
+        }
         STATE.justResumed = true;
       }
     }catch(e){ /* ignore a corrupt draft, start fresh */ }
@@ -764,6 +790,20 @@ async function reviewCompletedSegment(segmentId){
   STATE.justResumed = false;
   STATE.view = 'code';
   render();
+}
+
+// Records saved before Section F was split store ONE merged gate under 'F'. For those, show that
+// answer under both new gates so old data stays readable. Nothing saved is ever rewritten.
+function gateOf(answers, secId){
+  if(!answers) return undefined;
+  if((secId === 'F1' || secId === 'F2') && answers[secId] === undefined && answers.F !== undefined) return answers.F;
+  return answers[secId];
+}
+
+// A segment the coder opened that is NOT on their assigned list (e.g. a second-coder pass).
+// It saves under their own name, never under someone else's.
+function isOutsideAssignment(){
+  return !!STATE.currentSegmentId && assignedList().indexOf(STATE.currentSegmentId) === -1;
 }
 
 function currentSegmentObj(){
@@ -862,9 +902,13 @@ function renderCode(){
     ${sectionTextHtml}
     <div class="btnrow"><button class="primary" id="continueBtn" ${sectionComplete()?'':'disabled'}>Continue</button></div>
     ${sectionComplete() ? '' : '<p class="small chrome">Answer every item above to continue.</p>'}
+    ${(!sectionComplete() && (section.single || section.singleWithinGroup)) ? '<div class="btnrow"><button type="button" id="noneFitBtn">None of these fit — change my gate answer to No</button></div><p class="small chrome">Use this if nothing above applies. It clears this section and records the gate as No, so you are never forced to pick a wrong option.</p>' : ''}
     <div id="warnBox"></div>`;
   }
 
+  const legacyF = (section.id === 'F1' || section.id === 'F2') && STATE.sectionState.answers[section.id] === undefined && STATE.sectionState.answers.F !== undefined;
+  const outsideBanner = (!STATE.reviewMode && isOutsideAssignment()) ? `<div class="flagbar chrome" style="color:#8a6d00;background:#FFF6DD;border-color:#e0c060;">Second-coder pass: this segment is not on your assigned list. It saves under <strong>${escapeHtml(STATE.coder)}</strong>. Progress is not auto-saved here, so finish the segment and click Save in one sitting.</div>` : '';
+  const legacyFBanner = legacyF ? `<div class="flagbar chrome" style="color:#8a6d00;background:#FFF6DD;border-color:#e0c060;">Section F is now split into F1 (authority) and F2 (evidence). Your earlier single F gate answer on this segment was <strong>${STATE.sectionState.answers.F ? 'Yes' : 'No'}</strong>. Please answer this new gate fresh.</div>` : '';
   const resumeBanner = STATE.justResumed ? `<div class="flagbar chrome" style="color:var(--good);background:#E5F0E9;border-color:var(--good);">Resumed where you left off on this segment.</div>` : '';
   STATE.justResumed = false;
   const reviewBanner = STATE.reviewMode ? `<div class="flagbar chrome" style="color:#8a6d00;background:#FFF6DD;border-color:#e0c060;">Reviewing a segment you already finished. Step through to "Save" at the end to update the saved answer — nothing changes until then.</div>` : '';
@@ -873,6 +917,8 @@ function renderCode(){
     ${topbar(`${STATE.coder} · segment ${doneCount+1} of ${list.length}`)}
     ${resumeBanner}
     ${reviewBanner}
+    ${outsideBanner}
+    ${legacyFBanner}
     <div class="progress chrome">${progressHtml}</div>
     <div class="card">
       <div class="segment-label chrome">Segment text (comment identity hidden)</div>
@@ -902,6 +948,7 @@ function renderCode(){
       saveDraft();
     };
     document.getElementById('gateNo').onclick = ()=>{
+      section.items.forEach(it=>{ STATE.sectionState.answers[it.code] = undefined; STATE.sectionState.texts[it.code] = undefined; });
       STATE.sectionState.answers[section.id] = false;
       STATE.sectionState.sectionsDone[section.id] = 'no';
       STATE.sectionIndex++;
@@ -909,7 +956,7 @@ function renderCode(){
       saveDraft();
     };
   } else {
-    document.getElementById('revertGate').onclick = ()=>{
+    const revertGateToNo = ()=>{
       if(!confirm('This clears any answers already given in this section. Continue?')) return;
       section.items.forEach(it=>{ STATE.sectionState.answers[it.code] = undefined; STATE.sectionState.texts[it.code] = undefined; });
       if(section.sectionText) STATE.sectionState.texts[section.sectionText.code] = undefined;
@@ -919,6 +966,8 @@ function renderCode(){
       render();
       saveDraft();
     };
+    document.getElementById('revertGate').onclick = revertGateToNo;
+    if(document.getElementById('noneFitBtn')) document.getElementById('noneFitBtn').onclick = revertGateToNo;
     document.querySelectorAll('button[data-code]').forEach(el=>{
       el.onclick = ()=>{
         const code = el.getAttribute('data-code');
@@ -1118,6 +1167,11 @@ function renderSummary(){
         render();
         return;
       }
+      if(isOutsideAssignment()){
+        STATE.view = 'mylist';
+        render();
+        return;
+      }
       await clearDraft();
       const list = assignedList();
       const next = list.find(id => !(STATE.responses[id] && STATE.responses[id].complete));
@@ -1140,6 +1194,7 @@ async function saveCurrentSegment(){
     rationale: STATE.sectionState.rationale || '',
     confidence: STATE.sectionState.confidence || null,
     confidenceExplain: STATE.sectionState.confidenceExplain || '',
+    outsideAssignment: isOutsideAssignment(),
     codedAt: new Date().toISOString()
   };
   STATE.responses[seg.segmentId] = record;
@@ -1295,8 +1350,10 @@ async function buildExportRows(){
   // gate_X = 1 (Yes), 0 (No), blank (never answered). With these, an item column of 0
   // is a real "no" only when its section's gate_X is 1; if gate_X is 0 the item was
   // never asked (structural zero, treat as NA).
-  const gateCols = CODEBOOK.map(s => 'gate_' + s.id);
-  const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols).concat(gateCols);
+  // gate_F is the OLD merged F gate (records saved before the split); gate_F1/gate_F2 are the new gates.
+  const gateIds = ['A','B','C','D','E','F','G','H','I','J','K','F1','F2'];
+  const gateCols = gateIds.map(id => 'gate_' + id);
+  const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols).concat(gateCols).concat(['outside_assignment']);
   const rows = [header];
   for(const coder of CODERS){
     const responses = await loadCoderResponses(coder);
@@ -1307,10 +1364,11 @@ async function buildExportRows(){
       const row = [coder, r.commentId, segmentId, r.flagged?1:0, resolution, r.nonSubstantive||'', r.memo||'', r.rationale||'', r.confidence||'', r.confidenceExplain||'', r.codedAt||''];
       allCols.forEach(c => row.push(r.answers && r.answers[c] ? 1 : 0));
       textCols.forEach(c => { const code = c.replace('_specify',''); row.push((r.texts && r.texts[code]) || ''); });
-      CODEBOOK.forEach(s => {
-        const g = r.answers ? r.answers[s.id] : undefined;
+      gateIds.forEach(id => {
+        const g = r.answers ? r.answers[id] : undefined;
         row.push(g === true ? 1 : (g === false ? 0 : ''));
       });
+      row.push(r.outsideAssignment ? 1 : 0);
       rows.push(row);
     });
   }
@@ -1373,11 +1431,11 @@ async function buildConsensusRows(){
 
     let total = 0;
     const sections = CODEBOOK.map(sec=>{
-      const gateVals = entries.map(e => e.r.answers ? e.r.answers[sec.id] : undefined);
+      const gateVals = entries.map(e => gateOf(e.r.answers, sec.id));
       const gateStatus = fieldStatus(gateVals.map(v => v === true));
       const items = sec.items.map(it=>{
         const cells = entries.map(e=>{
-          const gateYes = !!(e.r.answers && e.r.answers[sec.id] === true);
+          const gateYes = gateOf(e.r.answers, sec.id) === true;
           const yes = !!(e.r.answers && e.r.answers[it.code] === true);
           return { coder:e.coder, val: yes ? 'yes' : (gateYes ? 'no' : 'na'),
                    text: (it.hasText && e.r.texts && e.r.texts[it.code]) ? e.r.texts[it.code] : '' };
@@ -1433,20 +1491,24 @@ function consSectionHtml(row, S, rec){
   const gateRow = `<tr class="gate-row c-${S.gateStatus}">
       <th>Gate: ${escapeHtml(sec.gate)}</th>
       ${S.gateVals.map(v => `<td>${v===true?'Yes':v===false?'No':'—'}</td>`).join('')}
-      <td class="final">${S.gateStatus==='disagree' ? consFinalSelect(row.segmentId, 'gate:'+sec.id, rec) : ''}</td>
+      <td class="final">${consFinalSelect(row.segmentId, 'gate:'+sec.id, rec)}</td>
     </tr>`;
   // Nobody said Yes to the gate and nobody disagrees: one compact line instead of a wall of gray.
-  if(!S.anyYes && S.dis === 0){
-    return `<table class="cons-table"><thead>${head}</thead><tbody>${gateRow}</tbody></table>`;
-  }
   const itemRows = S.items.map(i => `<tr class="c-${i.status}">
       <th>${escapeHtml(i.item.label)}</th>
       ${i.cells.map(c => `<td>${valLabel(c.val)}${c.text ? ': “'+escapeHtml(c.text)+'”' : ''}</td>`).join('')}
-      <td class="final">${i.status==='disagree' ? consFinalSelect(row.segmentId, i.item.code, rec) : ''}</td>
+      <td class="final">${consFinalSelect(row.segmentId, i.item.code, rec)}</td>
     </tr>`).join('');
   const textRows = (S.sectionText.length && sec.sectionText)
     ? `<tr><th>${escapeHtml(sec.sectionText.label)}</th><td colspan="${row.entries.length+1}">${S.sectionText.map(x=>`<strong>${escapeHtml(firstName(x.coder))}:</strong> ${escapeHtml(x.text)}`).join(' &nbsp;·&nbsp; ')}</td></tr>`
     : '';
+  if(!S.anyYes && S.dis === 0){
+    // Nobody said Yes and nobody disagrees: one compact line, but the items stay one click away
+    // so the team can still set a code nobody picked (set the gate to Yes first).
+    return `<table class="cons-table"><thead>${head}</thead><tbody>${gateRow}</tbody></table>
+      <details class="chrome small" style="margin:2px 0 10px;"><summary>Show items for this section, to set a team decision</summary>
+      <table class="cons-table"><tbody>${itemRows}</tbody></table></details>`;
+  }
   return `<table class="cons-table"><thead>${head}</thead><tbody>${gateRow}${itemRows}${textRows}</tbody></table>`;
 }
 
@@ -1527,9 +1589,13 @@ function consApplyFilter(f){
 
 function consensusCsv(){
   const codes = [];
-  CODEBOOK.forEach(s => { codes.push('gate:'+s.id); s.items.forEach(it => codes.push(it.code)); });
+  CODEBOOK.forEach(s => {
+    if(s.id === 'F1') codes.push('gate:F');   // legacy merged F gate: keeps decisions already saved by the team
+    codes.push('gate:'+s.id); s.items.forEach(it => codes.push(it.code));
+  });
   const header = ['segmentId','commentId','why_included','fields_in_disagreement','status','final_decision','discussion_notes','recorded_by','saved_at']
-    .concat(codes.map(c => 'final_'+c.replace(':','_')));
+    .concat(codes.map(c => 'final_'+c.replace(':','_')))
+    .concat(['team_override_fields']);   // appended last so existing column positions don't move
   const out = [header];
   CONS.rows.forEach(r=>{
     const rec = CONS.records[r.segmentId] || {};
@@ -1543,7 +1609,9 @@ function consensusCsv(){
     });
     out.push([r.segmentId, r.commentId, why.join('; '), disCodes.join(' '), rec.status || 'open',
               rec.decision||'', rec.discussion||'', rec.recordedBy||'', rec.savedAt||'']
-      .concat(codes.map(c => rec.final && c in rec.final ? (rec.final[c] ? 1 : 0) : '')));
+      .concat(codes.map(c => rec.final && c in rec.final ? (rec.final[c] ? 1 : 0) : ''))
+      // fields where the team set a value although the coders did not disagree (an override)
+      .concat([Object.keys(rec.final || {}).filter(k => disCodes.indexOf(k) === -1).join(' ')]));
   });
   return rowsToCsv(out);
 }
@@ -1605,7 +1673,7 @@ async function renderConsensus(){
         if(sel.value === 'yes') final[sel.dataset.final] = true;
         else if(sel.value === 'no') final[sel.dataset.final] = false;
       });
-      const undecided = card.querySelectorAll('select[data-final]').length - Object.keys(final).length;
+      const undecided = Array.from(card.querySelectorAll('tr.c-disagree select[data-final]')).filter(sel => !sel.value).length;
       const rec = {
         status: card.querySelector('[data-f="status"]').value,
         decision: card.querySelector('[data-f="decision"]').value,
