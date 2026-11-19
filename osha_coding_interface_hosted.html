@@ -1291,7 +1291,12 @@ async function buildExportRows(){
   const resolutions = {};
   Object.keys(legacyRes).forEach(k => { resolutions[k] = { note: legacyRes[k].note }; });
   Object.keys(consRecs).forEach(k => { if(consRecs[k].decision) resolutions[k] = { note: consRecs[k].decision }; });
-  const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols);
+  // Gate answers, appended at the END so existing column positions don't move.
+  // gate_X = 1 (Yes), 0 (No), blank (never answered). With these, an item column of 0
+  // is a real "no" only when its section's gate_X is 1; if gate_X is 0 the item was
+  // never asked (structural zero, treat as NA).
+  const gateCols = CODEBOOK.map(s => 'gate_' + s.id);
+  const header = ['coder','commentId','segmentId','flagged','group_resolution','non_substantive','memo','rationale','confidence','confidenceExplain','codedAt'].concat(allCols).concat(textCols).concat(gateCols);
   const rows = [header];
   for(const coder of CODERS){
     const responses = await loadCoderResponses(coder);
@@ -1302,6 +1307,10 @@ async function buildExportRows(){
       const row = [coder, r.commentId, segmentId, r.flagged?1:0, resolution, r.nonSubstantive||'', r.memo||'', r.rationale||'', r.confidence||'', r.confidenceExplain||'', r.codedAt||''];
       allCols.forEach(c => row.push(r.answers && r.answers[c] ? 1 : 0));
       textCols.forEach(c => { const code = c.replace('_specify',''); row.push((r.texts && r.texts[code]) || ''); });
+      CODEBOOK.forEach(s => {
+        const g = r.answers ? r.answers[s.id] : undefined;
+        row.push(g === true ? 1 : (g === false ? 0 : ''));
+      });
       rows.push(row);
     });
   }
